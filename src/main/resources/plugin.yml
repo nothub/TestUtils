@@ -1,0 +1,19 @@
+name: 'TestUtils'
+version: '@mod_version@'
+api-version: '@minecraft_version@'
+main: 'lol.hub.testutils.Plugin'
+description: 'Fake players for headless plugin tests'
+website: 'https://github.com/nothub/TestUtils'
+authors: [ 'nothub' ]
+contributors: [ ]
+
+commands:
+  testutils:
+    description: 'Drive fake players'
+    usage: '/testutils <spawn|remove|as|open|close|use> <name> ...'
+    aliases: [ 'tu' ]
+    permission: testutils.use
+
+permissions:
+  testutils.use:
+    default: op
