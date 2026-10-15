@@ -2,6 +2,10 @@
 
 Paper plugin. Fake players for headless plugin tests.
 
+Write JUnit 6 tests with the [test library](#test-library) and run them with `./gradlew test`.
+The library boots a headless Paper server with the plugin under test and TestUtils installed,
+drives it over RCON through fake players, and stops it after the last test.
+
 A fake player is a real `ServerPlayer`, joined through vanilla's own login
 path with an in-memory connection. Other plugins see it in
 `getOnlinePlayers()` and receive the same events a real client would fire.
@@ -26,6 +30,52 @@ Alias `/tu`, permission `testutils.use` (op).
 Vanilla commands cover the rest, since the fake player is a real player:
 `tp`, `give`, `clear`, `item replace entity <name> weapon.mainhand with ...`,
 `data get entity <name> Inventory`, `data get block <x> <y> <z> Items`.
+
+### Replies
+
+Every `tu` command answers with one line of JSON. Success carries `"ok": true`
+plus the fields below. Anything the caller can fix answers `{"ok":false,"error":"..."}`:
+an unknown action, missing or non-numeric arguments, coordinates outside the world border or height
+limits, an unknown face, a name that is taken or unknown, a block that is no container.
+None of these log an error. An error reply holds exactly `ok` and `error`.
+
+| Command | Reply |
+|---|---|
+| `spawn` | `{"ok":true,"name":"bot","x":0,"y":64,"z":0}` (block coordinates) |
+| `remove` | `{"ok":true,"name":"bot"}` |
+| `as` | `{"ok":true,"name":"bot","command":"help","success":true}`, `success` is false for an unknown command or one the bot may not run |
+| `open` | `{"ok":true,"name":"bot","block":"minecraft:chest"}` |
+| `close` | `{"ok":true,"name":"bot"}` |
+| `use` | `{"ok":true,"name":"bot","item":"minecraft:iron_hoe","pos":[0,64,2],"result":"Success"}`, `item` is the main-hand item before the click, `result` the vanilla interaction result (`Success`, `Pass`, `Fail`, ...) |
+
+A fake player is not op. `as` runs commands under the permissions it has.
+
+### Test library
+
+`TestServerExtension` starts one Paper server per test run and injects it as a `TestServer`:
+
+```java
+@ExtendWith(TestServerExtension.class)
+class SpawnTest {
+    @Test
+    void spawns(TestServer server) {
+        server.command("forceload add 0 0");
+        server.command("setblock 0 64 0 stone");
+        JsonObject reply = server.tu("spawn bot 0 65 0");   // parsed reply, ok:false is returned, not thrown
+        assertTrue(reply.get("ok").getAsBoolean());
+        assertEquals(new CheckResult(true, 1), server.check("if block 0 64 0 stone"));
+    }
+}
+```
+
+- `tu(args)` runs a `tu` command and parses the reply.
+- `check(condition)` runs `execute <condition>` (`if ...` or `unless ...`) and returns a `CheckResult(passed, count)`.
+  A plain pass counts 1 and a plain fail 0. Vanilla's `Test passed. Count: N` and
+  `Test failed. Count: N` carry their count. Any other reply (typo, unknown block,
+  unloaded position) throws with the reply text.
+- `command(line)` runs any console command and returns everything it wrote back.
+
+The library compiles against JUnit and Gson without shipping them: declare both in the consuming build.
 
 ### Example
 
@@ -61,6 +111,7 @@ boots it in a temp directory with the plugin jar, and talks to it over RCON.
 
 - Nothing ticks the fake player's connection, so it has no physics and no
   per-tick player logic. It stands where it was placed until `tp` moves it.
-- With no real player online, chunks around world spawn may be unloaded.
-  Spawn the fake player first: it keeps the chunks around it loaded.
+- Spawning a fake player does not load the chunks around it in time for the
+  next command (`That position is not loaded`). Load the area with
+  `forceload add <x> <z>` before placing blocks.
 - Fake players don't survive a restart. `onDisable` removes them all.

@@ -1,5 +1,9 @@
 package lol.hub.testutils;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
+
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -74,6 +78,34 @@ public final class TestServer implements AutoCloseable {
             return rcon.command(command);
         } catch (IOException e) {
             throw new IllegalStateException("RCON command failed: " + command, e);
+        }
+    }
+
+    /**
+     * Runs a {@code tu} command and returns its JSON reply. An {@code "ok": false} reply is returned,
+     * not thrown, so tests can assert on errors.
+     */
+    public JsonObject tu(String args) {
+        String reply = command(("tu " + args).stripTrailing()).strip();
+        try {
+            return JsonParser.parseString(reply).getAsJsonObject();
+        } catch (JsonParseException | IllegalStateException e) {
+            throw new IllegalStateException("tu " + args + " did not answer with one JSON object: " + reply, e);
+        }
+    }
+
+    /**
+     * Runs {@code execute <condition>}, where the condition starts with {@code if} or {@code unless},
+     * and throws on any reply that is not a test result: a typo, an unknown block, an unloaded position.
+     */
+    public CheckResult check(String condition) {
+        if (!condition.startsWith("if ") && !condition.startsWith("unless ")) {
+            throw new IllegalArgumentException("a check starts with 'if' or 'unless': " + condition);
+        }
+        try {
+            return CheckResult.parse(command("execute " + condition));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("execute " + condition + " answered with " + e.getMessage(), e);
         }
     }
 

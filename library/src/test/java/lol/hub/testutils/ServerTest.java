@@ -4,19 +4,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(TestServerExtension.class)
-class TuSpawnTest {
-
-    @Test
-    void spawnReplies(TestServer server) {
-        assertEquals("spawned bot at 0 64 0\n", server.command("tu spawn bot 0 64 0"));
-    }
+class ServerTest {
 
     @Test
     void repliesOverFourKilobytesAreReassembled(TestServer server) {
@@ -29,9 +23,7 @@ class TuSpawnTest {
 
     @Test
     void startupLogHasNoErrors(TestServer server) throws IOException {
-        List<String> bad = Files.readAllLines(server.logFile()).stream()
-                .filter(line -> line.contains(" ERROR]") || line.contains("Ambiguous plugin name"))
-                .toList();
+        List<String> bad = ServerLog.errors(server);
         assertTrue(bad.isEmpty(), () -> "server log has errors:\n" + String.join("\n", bad));
     }
 }
