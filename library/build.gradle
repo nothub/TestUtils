@@ -80,8 +80,12 @@ def paperJar = tasks.register('paperJar') {
 }
 
 def pluginJar = project(':plugin').tasks.named('jar').flatMap { it.archiveFile }
+def serverLog = layout.buildDirectory.file('testutils/server.log')
 tasks.named('test') {
     useJUnitPlatform()
+    outputs.file(serverLog)
+    // A log left by an earlier run must not satisfy verifyServerLog.
+    doFirst { serverLog.get().asFile.delete() }
     // Jar contents are inputs: a plugin change without `clean` must rerun the suite.
     inputs.file(pluginJar).withPropertyName('pluginJar')
     inputs.files(paperJar).withPropertyName('paperJar')
@@ -91,3 +95,15 @@ tasks.named('test') {
         systemProperty 'testutils.testutilsJar', pluginJar.get().asFile.path
     }
 }
+
+// The library copies the server log here when the server stops, so a CI failure can be read after the fact.
+def verifyServerLog = tasks.register('verifyServerLog') {
+    dependsOn 'test'
+    def log = serverLog
+    doLast {
+        def file = log.get().asFile
+        if (!file.isFile()) throw new GradleException("${file} is missing, the test run did not leave the server log behind")
+        if (!file.text.contains('Done (')) throw new GradleException("${file} has no 'Done (' line")
+    }
+}
+tasks.named('check') { dependsOn verifyServerLog }

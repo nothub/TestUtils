@@ -9,6 +9,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
@@ -26,6 +27,9 @@ public final class TestServer implements AutoCloseable {
     // A cold start downloads and patches the vanilla jar first.
     private static final Duration READY_TIMEOUT = Duration.ofMinutes(5);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration MARKER_TIMEOUT = Duration.ofSeconds(30);
+    // Relative to the test JVM's working directory, which Gradle sets to the project directory.
+    static final Path LOG_COPY = Path.of("build", "testutils", "server.log");
 
     // Nothing here is random: no fluids, no features, no structures, so every test sees the same ground (top block y=63).
     private static final String FLAT_WORLD = "{\"layers\":[{\"block\":\"minecraft:bedrock\",\"height\":1},"
@@ -52,13 +56,15 @@ public final class TestServer implements AutoCloseable {
     private final Path dir;
     private final Process process;
     private final Rcon rcon;
+    private final LogWatcher watcher;
     private final AtomicInteger nextAreaIndex = new AtomicInteger();
     private final AtomicInteger nextBotCounter = new AtomicInteger();
 
-    private TestServer(Path dir, Process process, Rcon rcon) {
+    private TestServer(Path dir, Process process, Rcon rcon, LogWatcher watcher) {
         this.dir = dir;
         this.process = process;
         this.rcon = rcon;
+        this.watcher = watcher;
     }
 
     static TestServer start() throws IOException {
@@ -66,7 +72,10 @@ public final class TestServer implements AutoCloseable {
         Path plugins = Files.createDirectory(dir.resolve("plugins"));
         // The plugin under test may be TestUtils itself: a second copy would clash on the plugin name.
         Set<Path> jars = new LinkedHashSet<>();
-        jars.add(Path.of(property("testutils.pluginJar")).toRealPath());
+        Path pluginJar = Path.of(property("testutils.pluginJar")).toRealPath();
+        jars.add(pluginJar);
+        // Read before the slow boot, so a jar without plugin.yml fails at once.
+        PluginErrors pluginErrors = PluginErrors.forJar(pluginJar);
         jars.add(Path.of(property("testutils.testutilsJar")).toRealPath());
         for (Path jar : jars) Files.copy(jar, plugins.resolve(jar.getFileName()));
 
@@ -100,7 +109,14 @@ public final class TestServer implements AutoCloseable {
                 rcon.close();
                 throw e;
             }
-            return new TestServer(dir, process, rcon);
+            LogWatcher watcher = new LogWatcher(dir.resolve("server.log"), pluginErrors, marker -> {
+                try {
+                    rcon.command("say " + marker);
+                } catch (IOException e) {
+                    throw new IllegalStateException("RCON command failed: say " + marker, e);
+                }
+            }, MARKER_TIMEOUT);
+            return new TestServer(dir, process, rcon, watcher);
         } catch (IOException | RuntimeException e) {
             process.destroyForcibly();
             throw e;
@@ -153,6 +169,11 @@ public final class TestServer implements AutoCloseable {
         return nextBotCounter.getAndIncrement();
     }
 
+    /** Errors of the plugin under test logged since the previous call, or since boot on the first call. */
+    List<String> pluginErrors() {
+        return watcher.pluginErrors();
+    }
+
     public Path logFile() {
         return dir.resolve("server.log");
     }
@@ -172,8 +193,13 @@ public final class TestServer implements AutoCloseable {
         } finally {
             process.destroyForcibly();
         }
-        try (Stream<Path> files = Files.walk(dir)) {
-            for (Path p : (Iterable<Path>) files.sorted(Comparator.reverseOrder())::iterator) Files.delete(p);
+        try {
+            Files.createDirectories(LOG_COPY.getParent());
+            Files.copy(logFile(), LOG_COPY, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            try (Stream<Path> files = Files.walk(dir)) {
+                for (Path p : (Iterable<Path>) files.sorted(Comparator.reverseOrder())::iterator) Files.delete(p);
+            }
         }
     }
 

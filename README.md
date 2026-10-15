@@ -89,6 +89,15 @@ class SpawnTest {
 - `Bot` has `hold(item)`, `run(command)`, `use(pos)`, `open(pos)`, `close()`, `remove()`. A call the server
   refuses throws, so tests never check a reply. `run` returns the command's success instead.
 
+- After every test, and after the last test of a class, the extension has the server `say` a marker and reads
+  the log up to it. An entry that belongs to the plugin under test fails that test, with the entry in the message.
+  An entry belongs to it when it is an ERROR logged as `[PluginName] ...`, an ERROR in which the server
+  blames the plugin ("Could not pass event X to PluginName v1"), or any entry with a stack frame in the
+  package of the `main` class from the jar's `plugin.yml`. Paper's and other plugins' errors are ignored. Errors
+  logged while the server boots fail the first test.
+- When the server stops, its log is copied to `build/testutils/server.log` (relative to the test JVM's
+  working directory, which is the project directory under Gradle).
+
 The test server runs a flat world: bedrock at y=-64, dirt up to y=62, grass at y=63, air from y=64.
 It has no fluids, structures or animals. Random ticks, mob spawning and the day cycle are off, the
 time is fixed at 6000 and the difficulty is peaceful. The library reads each setting back before
