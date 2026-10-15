@@ -16,6 +16,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /** A real Paper server in a fresh temp directory, controlled over RCON. */
@@ -51,6 +52,8 @@ public final class TestServer implements AutoCloseable {
     private final Path dir;
     private final Process process;
     private final Rcon rcon;
+    private final AtomicInteger nextAreaIndex = new AtomicInteger();
+    private final AtomicInteger nextBotCounter = new AtomicInteger();
 
     private TestServer(Path dir, Process process, Rcon rcon) {
         this.dir = dir;
@@ -139,6 +142,15 @@ public final class TestServer implements AutoCloseable {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("execute " + condition + " answered with " + e.getMessage(), e);
         }
+    }
+
+    /** A fresh {@link Area} no other test has used. Close it to remove its bots. */
+    public Area area() {
+        return new Area(this, nextAreaIndex.getAndIncrement());
+    }
+
+    int nextBotNumber() {
+        return nextBotCounter.getAndIncrement();
     }
 
     public Path logFile() {

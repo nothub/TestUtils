@@ -81,6 +81,14 @@ class SpawnTest {
   as soon as a value breaks `holds`, with that value. It returns only after the window has
   passed, so a control case can show that something did not happen.
 
+- `server.area()` / an injected `Area` parameter: one area per test invocation (each parameterized case too).
+  It is a force-loaded chunk with a stone floor, spaced far from every other area. `area.at(dx, dy, dz)`
+  gives a `Pos`, where `dy` 0 is the floor and 1 the first air block; a `Pos` prints as `x y z` for commands.
+  `area.bot()` and `area.bot(pos)` spawn a `Bot` with a unique name from a run-wide counter. The area
+  removes its bots when the test ends. An `Area` can't be injected into `@BeforeAll`.
+- `Bot` has `hold(item)`, `run(command)`, `use(pos)`, `open(pos)`, `close()`, `remove()`. A call the server
+  refuses throws, so tests never check a reply. `run` returns the command's success instead.
+
 The test server runs a flat world: bedrock at y=-64, dirt up to y=62, grass at y=63, air from y=64.
 It has no fluids, structures or animals. Random ticks, mob spawning and the day cycle are off, the
 time is fixed at 6000 and the difficulty is peaceful. The library reads each setting back before
