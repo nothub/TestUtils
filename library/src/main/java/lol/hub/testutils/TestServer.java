@@ -5,14 +5,14 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
+import java.security.SecureRandom;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 /** A real Paper server in a fresh temp directory, controlled over RCON. */
 public final class TestServer implements AutoCloseable {
 
-    private static final String RCON_PASSWORD = "testutils";
+    private static final int MAX_PORT_ATTEMPTS = 5;
     // A cold start downloads and patches the vanilla jar first.
     private static final Duration READY_TIMEOUT = Duration.ofMinutes(5);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(60);
@@ -53,21 +53,45 @@ public final class TestServer implements AutoCloseable {
             new WorldSetting("difficulty peaceful", "difficulty", "The difficulty is Peaceful"),
             new WorldSetting("time set 6000", "time query day", "Timeline minecraft:day is at 6000 tick(s)"));
 
+    /** The server could not bind a port we picked for it, because another process took it first. */
+    private static final class PortInUse extends Exception {
+    }
+
     private final Path dir;
+    private final Path logCopy;
+    private final int rconPort;
     private final Process process;
     private final Rcon rcon;
     private final LogWatcher watcher;
     private final AtomicInteger nextAreaIndex = new AtomicInteger();
     private final AtomicInteger nextBotCounter = new AtomicInteger();
 
-    private TestServer(Path dir, Process process, Rcon rcon, LogWatcher watcher) {
+    private TestServer(Path dir, Path logCopy, int rconPort, Process process, Rcon rcon, LogWatcher watcher) {
         this.dir = dir;
+        this.logCopy = logCopy;
+        this.rconPort = rconPort;
         this.process = process;
         this.rcon = rcon;
         this.watcher = watcher;
     }
 
     static TestServer start() throws IOException {
+        return start(PortSource.LOOPBACK, LOG_COPY);
+    }
+
+    /** Boots again on new ports when a bind fails, which happens when parallel runs pick the same port. */
+    static TestServer start(PortSource ports, Path logCopy) throws IOException {
+        for (int attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
+            try {
+                return boot(ports.next(), ports.next(), logCopy);
+            } catch (PortInUse e) {
+                // Next attempt picks new ports.
+            }
+        }
+        throw new IllegalStateException("server could not bind its ports in " + MAX_PORT_ATTEMPTS + " attempts");
+    }
+
+    private static TestServer boot(int gamePort, int rconPort, Path logCopy) throws IOException, PortInUse {
         Path dir = Files.createTempDirectory("testutils-");
         Path plugins = Files.createDirectory(dir.resolve("plugins"));
         // The plugin under test may be TestUtils itself: a second copy would clash on the plugin name.
@@ -79,17 +103,20 @@ public final class TestServer implements AutoCloseable {
         jars.add(Path.of(property("testutils.testutilsJar")).toRealPath());
         for (Path jar : jars) Files.copy(jar, plugins.resolve(jar.getFileName()));
 
-        int gamePort = freePort();
-        int rconPort = freePort();
+        // A run that lands on another run's RCON port by mistake cannot log in without this.
+        byte[] random = new byte[16];
+        new SecureRandom().nextBytes(random);
+        String rconPassword = HexFormat.of().formatHex(random);
         Files.writeString(dir.resolve("eula.txt"), "eula=true\n");
         Files.writeString(dir.resolve("server.properties"), String.join("\n",
                 "online-mode=false",
                 "white-list=false",
                 "server-ip=127.0.0.1",
                 "server-port=" + gamePort,
+                "enable-query=false",
                 "enable-rcon=true",
                 "rcon.port=" + rconPort,
-                "rcon.password=" + RCON_PASSWORD,
+                "rcon.password=" + rconPassword,
                 "level-type=minecraft:flat",
                 "generator-settings=" + FLAT_WORLD,
                 ""));
@@ -101,8 +128,8 @@ public final class TestServer implements AutoCloseable {
                 .redirectOutput(dir.resolve("server.log").toFile())
                 .start();
         try {
-            awaitReady(process, dir.resolve("server.log"));
-            Rcon rcon = connect(rconPort);
+            awaitReady(process, dir.resolve("server.log"), rconPort);
+            Rcon rcon = connect(rconPort, rconPassword);
             try {
                 setUpWorld(rcon);
             } catch (IOException | RuntimeException e) {
@@ -116,7 +143,11 @@ public final class TestServer implements AutoCloseable {
                     throw new IllegalStateException("RCON command failed: say " + marker, e);
                 }
             }, MARKER_TIMEOUT);
-            return new TestServer(dir, process, rcon, watcher);
+            return new TestServer(dir, logCopy, rconPort, process, rcon, watcher);
+        } catch (PortInUse e) {
+            process.destroyForcibly();
+            deleteTree(dir);
+            throw e;
         } catch (IOException | RuntimeException e) {
             process.destroyForcibly();
             throw e;
@@ -174,6 +205,10 @@ public final class TestServer implements AutoCloseable {
         return watcher.pluginErrors();
     }
 
+    int rconPort() {
+        return rconPort;
+    }
+
     public Path logFile() {
         return dir.resolve("server.log");
     }
@@ -194,12 +229,16 @@ public final class TestServer implements AutoCloseable {
             process.destroyForcibly();
         }
         try {
-            Files.createDirectories(LOG_COPY.getParent());
-            Files.copy(logFile(), LOG_COPY, StandardCopyOption.REPLACE_EXISTING);
+            Files.createDirectories(logCopy.getParent());
+            Files.copy(logFile(), logCopy, StandardCopyOption.REPLACE_EXISTING);
         } finally {
-            try (Stream<Path> files = Files.walk(dir)) {
-                for (Path p : (Iterable<Path>) files.sorted(Comparator.reverseOrder())::iterator) Files.delete(p);
-            }
+            deleteTree(dir);
+        }
+    }
+
+    private static void deleteTree(Path dir) throws IOException {
+        try (Stream<Path> files = Files.walk(dir)) {
+            for (Path p : (Iterable<Path>) files.sorted(Comparator.reverseOrder())::iterator) Files.delete(p);
         }
     }
 
@@ -215,30 +254,33 @@ public final class TestServer implements AutoCloseable {
         }
     }
 
-    private static void awaitReady(Process process, Path log) throws IOException {
+    /**
+     * Ready means "Done (" and our own "RCON running on" line. A taken RCON port only logs a warning and the
+     * server still finishes booting, so without the second line we would talk to whoever holds the port.
+     */
+    private static void awaitReady(Process process, Path log, int rconPort) throws IOException, PortInUse {
         Instant deadline = Instant.now().plus(READY_TIMEOUT);
         while (Instant.now().isBefore(deadline)) {
-            if (Files.exists(log) && Files.readString(log).contains("Done (")) return;
+            String text = Files.exists(log) ? Files.readString(log) : "";
+            if (text.contains("FAILED TO BIND TO PORT")) throw new PortInUse();
+            if (text.contains("Done (")) {
+                if (text.contains("RCON running on 127.0.0.1:" + rconPort)) return;
+                throw new PortInUse();
+            }
             if (!process.isAlive()) throw new IllegalStateException("server exited early, see " + log);
             Waiting.pause(Duration.ofMillis(100));
         }
         throw new IllegalStateException("server not ready after " + READY_TIMEOUT + ", see " + log);
     }
 
-    private static Rcon connect(int port) throws IOException {
+    private static Rcon connect(int port, String password) throws IOException {
         for (int attempt = 0; ; attempt++) {
             try {
-                return new Rcon(port, RCON_PASSWORD);
+                return new Rcon(port, password);
             } catch (IOException e) {
                 if (attempt >= 50) throw e;
                 Waiting.pause(Duration.ofMillis(100));
             }
-        }
-    }
-
-    private static int freePort() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            return socket.getLocalPort();
         }
     }
 
