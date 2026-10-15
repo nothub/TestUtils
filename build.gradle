@@ -26,6 +26,11 @@ tasks.register('verifyDist') {
             if (metadata.contains('@')) throw new GradleException("${pluginJar} has an unfilled placeholder in plugin.yml")
         }
 
+        new java.util.zip.ZipFile(new File(libraryDist.get().asFile, libraryJar)).withCloseable { zip ->
+            def entry = 'lol/hub/testutils/TestServerExtension.class'
+            if (zip.getEntry(entry) == null) throw new GradleException("${libraryJar} lacks ${entry}")
+        }
+
         def globs = workflow.asFile.readLines().dropWhile { !it.trim().startsWith('files:') }.drop(1)
                 .takeWhile { it.startsWith(' ' * 12) }*.trim().findAll { it }
         if (globs.isEmpty()) throw new GradleException("no release 'files:' globs found in ${workflow}")

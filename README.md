@@ -52,6 +52,11 @@ Two subprojects, two jars:
 ./gradlew :plugin:runServer   # dev server with the plugin
 ```
 
+`check` also runs the library's tests against a real Paper server: the build
+pins one Paper build (`paper_build`, `paper_sha256` in `gradle.properties`),
+downloads and verifies it once into `<gradle user home>/caches/testutils/paper`,
+boots it in a temp directory with the plugin jar, and talks to it over RCON.
+
 ### Limits
 
 - Nothing ticks the fake player's connection, so it has no physics and no

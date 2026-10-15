@@ -2,6 +2,8 @@ plugins {
     id 'java-library'
 }
 
+evaluationDependsOn(':plugin')
+
 group = 'lol.hub'
 version = project.plugin_version
 
@@ -14,6 +16,10 @@ dependencies {
     compileOnly platform('org.junit:junit-bom:6.1.3')
     compileOnly 'org.junit.jupiter:junit-jupiter-api'
     compileOnly 'com.google.code.gson:gson:2.14.0'
+
+    testImplementation platform('org.junit:junit-bom:6.1.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 java {
@@ -26,3 +32,61 @@ tasks.withType(JavaCompile).configureEach {
 
 jar.archiveFileName.set("testutils-library-${project.version}.jar")
 jar.destinationDirectory.set(layout.buildDirectory.dir('dist'))
+
+// One pin (MC version, build, SHA-256) feeds this download and the plugin's dev bundle, so the
+// NMS code compiles against exactly the build the tests boot. The cache lives outside the
+// project, so `clean` never forces a re-download and `build/dist` stays free of foreign jars.
+def paperJarFile = new File(gradle.gradleUserHomeDir, "caches/testutils/paper/paper-${project.minecraft_version}-${project.paper_build}.jar")
+def paperJar = tasks.register('paperJar') {
+    def mc = project.minecraft_version
+    def paperBuild = project.paper_build
+    def sha256 = project.paper_sha256
+    inputs.property('mc', mc)
+    inputs.property('build', paperBuild)
+    inputs.property('sha256', sha256)
+    outputs.file(paperJarFile)
+    doLast {
+        def sha256Of = { File f ->
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            f.withInputStream { stream ->
+                def buffer = new byte[1 << 16]
+                for (int n; (n = stream.read(buffer)) > 0;) digest.update(buffer, 0, n)
+            }
+            digest.digest().encodeHex().toString()
+        }
+        if (paperJarFile.isFile() && sha256Of(paperJarFile) == sha256) return
+
+        def http = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(30)).followRedirects(java.net.http.HttpClient.Redirect.NORMAL).build()
+        def get = { String url, java.net.http.HttpResponse.BodyHandler handler ->
+            def request = java.net.http.HttpRequest.newBuilder(URI.create(url))
+                    .timeout(java.time.Duration.ofMinutes(10)).header('User-Agent', 'TestUtils (https://github.com/nothub/TestUtils)').build()
+            def response = http.send(request, handler)
+            if (response.statusCode() != 200) throw new GradleException("GET ${url} answered ${response.statusCode()}")
+            response.body()
+        }
+        def buildInfo = new groovy.json.JsonSlurper().parseText(
+                get("https://fill.papermc.io/v3/projects/paper/versions/${mc}/builds/${paperBuild}", java.net.http.HttpResponse.BodyHandlers.ofString()))
+        paperJarFile.parentFile.mkdirs()
+        def part = new File(paperJarFile.parentFile, paperJarFile.name + '.part')
+        part.delete()
+        get(buildInfo.downloads['server:default'].url, java.net.http.HttpResponse.BodyHandlers.ofFile(part.toPath()))
+        if (sha256Of(part) != sha256) {
+            part.delete()
+            throw new GradleException("paper ${mc} build ${paperBuild}: SHA-256 of the download does not match paper_sha256")
+        }
+        java.nio.file.Files.move(part.toPath(), paperJarFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+    }
+}
+
+def pluginJar = project(':plugin').tasks.named('jar').flatMap { it.archiveFile }
+tasks.named('test') {
+    useJUnitPlatform()
+    // Jar contents are inputs: a plugin change without `clean` must rerun the suite.
+    inputs.file(pluginJar).withPropertyName('pluginJar')
+    inputs.files(paperJar).withPropertyName('paperJar')
+    doFirst {
+        systemProperty 'testutils.paperJar', paperJarFile.path
+        systemProperty 'testutils.pluginJar', pluginJar.get().asFile.path
+        systemProperty 'testutils.testutilsJar', pluginJar.get().asFile.path
+    }
+}

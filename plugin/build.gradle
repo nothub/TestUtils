@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    paperweight.paperDevBundle("${project.minecraft_version}.build.+")
+    paperweight.paperDevBundle("${project.minecraft_version}.build.${project.paper_build}-stable")
 }
 
 java {
