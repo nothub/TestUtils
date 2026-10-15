@@ -16,6 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -94,6 +95,24 @@ class BotTest {
         bot.use(area.at(4, 0, 4));
         assertEquals(new CheckResult(true, 1), server.check("if block " + area.at(4, 0, 4) + " farmland"));
         assertEquals(new CheckResult(true, 1), server.check("if block " + above + " air"));
+    }
+
+    @Test
+    void inventoryShowsADamagedToolInTheMainHand(TestServer server, Area area) {
+        Bot bot = area.bot();
+        BOT_NAMES.add(bot.name());
+        assertNull(bot.inventory().mainHand());
+        assertEquals(Map.of(), bot.inventory().slots());
+
+        server.command("item replace entity " + bot.name() + " weapon.mainhand with minecraft:iron_hoe[minecraft:damage=7]");
+        server.command("item replace entity " + bot.name() + " armor.head with minecraft:iron_helmet");
+        server.command("item replace entity " + bot.name() + " weapon.offhand with minecraft:dirt[minecraft:item_model=\"minecraft:stone\"]");
+        Item hoe = new Item("minecraft:iron_hoe", 1, 7, "minecraft:iron_hoe");
+        Inventory inventory = bot.inventory();
+        assertEquals(hoe, inventory.mainHand());
+        assertEquals(Map.of(0, hoe,
+                39, new Item("minecraft:iron_helmet", 1, 0, "minecraft:iron_helmet"),
+                40, new Item("minecraft:dirt", 1, 0, "minecraft:stone")), inventory.slots());
     }
 
     @Test

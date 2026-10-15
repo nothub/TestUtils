@@ -10,7 +10,7 @@ contributors: [ ]
 commands:
   testutils:
     description: 'Drive fake players'
-    usage: '/testutils <spawn|remove|as|open|close|use> <name> ...'
+    usage: '/testutils <spawn|remove|as|open|close|use|inventory> <name> ...'
     aliases: [ 'tu' ]
     permission: testutils.use
 

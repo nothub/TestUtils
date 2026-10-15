@@ -26,6 +26,7 @@ Alias `/tu`, permission `testutils.use` (op).
 | `/tu open <name> <x> <y> <z>` | Open the container at that block. Fires `InventoryOpenEvent`. |
 | `/tu close <name>` | Close its open inventory view. Fires `InventoryCloseEvent`. |
 | `/tu use <name> <x> <y> <z> [face]` | Right-click the block with the main-hand item. Fires `PlayerInteractEvent`. Face defaults to `up`. |
+| `/tu inventory <name>` | Report what it carries: every non-empty slot and the main-hand item. |
 
 Vanilla commands cover the rest, since the fake player is a real player:
 `tp`, `give`, `clear`, `item replace entity <name> weapon.mainhand with ...`,
@@ -47,6 +48,7 @@ None of these log an error. An error reply holds exactly `ok` and `error`.
 | `open` | `{"ok":true,"name":"bot","block":"minecraft:chest"}` |
 | `close` | `{"ok":true,"name":"bot"}` |
 | `use` | `{"ok":true,"name":"bot","item":"minecraft:iron_hoe","pos":[0,64,2],"result":"Success"}`, `item` is the main-hand item before the click, `result` the vanilla interaction result (`Success`, `Pass`, `Fail`, ...) |
+| `inventory` | `{"ok":true,"name":"bot","main_hand":{"id":"minecraft:iron_hoe","count":1,"damage":7,"item_model":"minecraft:iron_hoe"},"items":[{"slot":0,"id":"minecraft:iron_hoe","count":1,"damage":7,"item_model":"minecraft:iron_hoe"}]}`, `main_hand` is `null` for an empty hand, empty slots are left out, `damage` is 0 for an item that can't be damaged. Slots are numbered like Bukkit's `PlayerInventory`: 0-8 hotbar, 9-35 bag, 36-39 boots to helmet, 40 off hand. |
 
 A fake player is not op. `as` runs commands under the permissions it has.
 
@@ -86,8 +88,10 @@ class SpawnTest {
   gives a `Pos`, where `dy` 0 is the floor and 1 the first air block; a `Pos` prints as `x y z` for commands.
   `area.bot()` and `area.bot(pos)` spawn a `Bot` with a unique name from a run-wide counter. The area
   removes its bots when the test ends. An `Area` can't be injected into `@BeforeAll`.
-- `Bot` has `hold(item)`, `run(command)`, `use(pos)`, `open(pos)`, `close()`, `remove()`. A call the server
+- `Bot` has `hold(item)`, `run(command)`, `use(pos)`, `open(pos)`, `close()`, `inventory()`, `remove()`. A call the server
   refuses throws, so tests never check a reply. `run` returns the command's success instead.
+  `inventory()` returns an `Inventory(Map<Integer, Item> slots, Item mainHand)` of `Item(id, count, damage, itemModel)`;
+  `mainHand` is null for an empty hand.
 
 - After every test, and after the last test of a class, the extension has the server `say` a marker and reads
   the log up to it. An entry that belongs to the plugin under test fails that test, with the entry in the message.

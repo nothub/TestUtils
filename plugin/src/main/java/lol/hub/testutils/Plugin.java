@@ -7,7 +7,9 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import io.papermc.paper.datacomponent.DataComponentTypes;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Container;
@@ -15,6 +17,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Arrays;
@@ -34,6 +37,7 @@ public final class Plugin extends JavaPlugin {
         USAGE.put("open", "open <name> <x> <y> <z>");
         USAGE.put("close", "close <name>");
         USAGE.put("use", "use <name> <x> <y> <z> [face]");
+        USAGE.put("inventory", "inventory <name>");
     }
 
     /** A reply the caller can fix: it goes out as {"ok":false,"error":...}, not as an exception. */
@@ -74,7 +78,7 @@ public final class Plugin extends JavaPlugin {
         }
         switch (action) {
             case "spawn" -> arity(action, args, 2, 5);
-            case "remove", "close" -> arity(action, args, 2);
+            case "remove", "close", "inventory" -> arity(action, args, 2);
             case "open" -> arity(action, args, 5);
             case "use" -> arity(action, args, 5, 6);
             case "as" -> {
@@ -120,6 +124,19 @@ public final class Plugin extends JavaPlugin {
                 reply.addProperty("block", block.getType().getKey().toString());
             }
             case "close" -> fake.closeInventory();
+            case "inventory" -> {
+                ItemStack[] contents = fake.getInventory().getContents();
+                JsonArray items = new JsonArray();
+                for (int slot = 0; slot < contents.length; slot++) {
+                    if (contents[slot] == null || contents[slot].isEmpty()) continue;
+                    JsonObject item = describe(contents[slot]);
+                    item.addProperty("slot", slot);
+                    items.add(item);
+                }
+                ItemStack hand = fake.getInventory().getItemInMainHand();
+                reply.add("main_hand", hand.isEmpty() ? JsonNull.INSTANCE : describe(hand));
+                reply.add("items", items);
+            }
             case "use" -> {
                 BlockPos pos = new BlockPos(integer(args[2]), integer(args[3]), integer(args[4]));
                 requireInside(new Location(fake.getWorld(), pos.getX(), pos.getY(), pos.getZ()));
@@ -141,6 +158,15 @@ public final class Plugin extends JavaPlugin {
             }
             default -> throw new AssertionError(action);
         }
+    }
+
+    private static JsonObject describe(ItemStack stack) {
+        JsonObject item = new JsonObject();
+        item.addProperty("id", stack.getType().getKey().toString());
+        item.addProperty("count", stack.getAmount());
+        item.addProperty("damage", stack.getDataOrDefault(DataComponentTypes.DAMAGE, 0));
+        item.addProperty("item_model", stack.getData(DataComponentTypes.ITEM_MODEL).asString());
+        return item;
     }
 
     private static CommandError usage(String action) {

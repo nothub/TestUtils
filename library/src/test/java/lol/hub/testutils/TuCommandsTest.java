@@ -63,10 +63,25 @@ class TuCommandsTest {
     }
 
     @Test
+    void inventoryReply(TestServer server) {
+        server.tu("spawn packer 1050 64 1000");
+        assertEquals(json("{\"ok\":true,\"name\":\"packer\",\"main_hand\":null,\"items\":[]}"), server.tu("inventory packer"));
+
+        server.command("item replace entity packer weapon.mainhand with minecraft:iron_hoe[minecraft:damage=7]");
+        server.command("item replace entity packer inventory.1 with minecraft:dirt 3");
+        assertEquals(json("{\"ok\":true,\"name\":\"packer\","
+                        + "\"main_hand\":{\"id\":\"minecraft:iron_hoe\",\"count\":1,\"damage\":7,\"item_model\":\"minecraft:iron_hoe\"},"
+                        + "\"items\":[{\"slot\":0,\"id\":\"minecraft:iron_hoe\",\"count\":1,\"damage\":7,\"item_model\":\"minecraft:iron_hoe\"},"
+                        + "{\"slot\":10,\"id\":\"minecraft:dirt\",\"count\":3,\"damage\":0,\"item_model\":\"minecraft:dirt\"}]}"),
+                server.tu("inventory packer"));
+        assertError(server.tu("inventory nobody"), "no fake player named nobody");
+    }
+
+    @Test
     void badArgumentsAnswerWithAnErrorAndLogNothing(TestServer server) throws IOException {
         server.tu("spawn badargs 1040 64 1000");
         List<String> wrongShape = List.of("", "bogus badargs", "spawn", "spawn x 1", "spawn x 1 2", "spawn x 1 2 3 4", "spawn x a b c",
-                "remove", "close", "as badargs", "open badargs", "open badargs a b c", "open badargs 1 2",
+                "remove", "close", "inventory", "inventory badargs extra", "as badargs", "open badargs", "open badargs a b c", "open badargs 1 2",
                 "use badargs 1 2", "use badargs a b c");
         List<String> outsideTheWorld = List.of("spawn out1 NaN 64 0", "spawn out2 Infinity 64 0", "spawn out3 1e400 64 0",
                 "spawn out4 0 64 1e10", "spawn out5 4000 100000 4000", "spawn out6 4000 -100000 4000",
