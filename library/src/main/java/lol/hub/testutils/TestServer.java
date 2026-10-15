@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -24,6 +25,28 @@ public final class TestServer implements AutoCloseable {
     // A cold start downloads and patches the vanilla jar first.
     private static final Duration READY_TIMEOUT = Duration.ofMinutes(5);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(60);
+
+    // Nothing here is random: no fluids, no features, no structures, so every test sees the same ground (top block y=63).
+    private static final String FLAT_WORLD = "{\"layers\":[{\"block\":\"minecraft:bedrock\",\"height\":1},"
+            + "{\"block\":\"minecraft:dirt\",\"height\":126},{\"block\":\"minecraft:grass_block\",\"height\":1}],"
+            + "\"biome\":\"minecraft:plains\",\"features\":false,\"lakes\":false,\"structure_overrides\":[]}";
+
+    /** A command that fixes part of the world, the query that reads it back, and what the query must answer. */
+    private record WorldSetting(String set, String query, String expected) {
+
+        static WorldSetting gamerule(String name, String value) {
+            return new WorldSetting("gamerule " + name + " " + value, "gamerule " + name,
+                    "Game rule " + name + " is currently set to " + value);
+        }
+    }
+
+    // advance_time goes before the time, so the clock cannot move on after it was set.
+    private static final List<WorldSetting> WORLD_SETTINGS = List.of(
+            WorldSetting.gamerule("random_tick_speed", "0"),
+            WorldSetting.gamerule("advance_time", "false"),
+            WorldSetting.gamerule("spawn_mobs", "false"),
+            new WorldSetting("difficulty peaceful", "difficulty", "The difficulty is Peaceful"),
+            new WorldSetting("time set 6000", "time query day", "Timeline minecraft:day is at 6000 tick(s)"));
 
     private final Path dir;
     private final Process process;
@@ -55,6 +78,8 @@ public final class TestServer implements AutoCloseable {
                 "enable-rcon=true",
                 "rcon.port=" + rconPort,
                 "rcon.password=" + RCON_PASSWORD,
+                "level-type=minecraft:flat",
+                "generator-settings=" + FLAT_WORLD,
                 ""));
 
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
@@ -65,7 +90,14 @@ public final class TestServer implements AutoCloseable {
                 .start();
         try {
             awaitReady(process, dir.resolve("server.log"));
-            return new TestServer(dir, process, connect(rconPort));
+            Rcon rcon = connect(rconPort);
+            try {
+                setUpWorld(rcon);
+            } catch (IOException | RuntimeException e) {
+                rcon.close();
+                throw e;
+            }
+            return new TestServer(dir, process, rcon);
         } catch (IOException | RuntimeException e) {
             process.destroyForcibly();
             throw e;
@@ -130,6 +162,18 @@ public final class TestServer implements AutoCloseable {
         }
         try (Stream<Path> files = Files.walk(dir)) {
             for (Path p : (Iterable<Path>) files.sorted(Comparator.reverseOrder())::iterator) Files.delete(p);
+        }
+    }
+
+    /** A rule that was renamed in a new MC version fails here, with the reply, instead of silently doing nothing. */
+    private static void setUpWorld(Rcon rcon) throws IOException {
+        for (WorldSetting setting : WORLD_SETTINGS) {
+            String setReply = rcon.command(setting.set()).strip();
+            String reply = rcon.command(setting.query()).strip();
+            if (!reply.equals(setting.expected())) {
+                throw new IllegalStateException("'" + setting.set() + "' answered '" + setReply + "' and did not take: '"
+                        + setting.query() + "' answered '" + reply + "', expected '" + setting.expected() + "'");
+            }
         }
     }
 

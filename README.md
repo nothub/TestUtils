@@ -81,6 +81,11 @@ class SpawnTest {
   as soon as a value breaks `holds`, with that value. It returns only after the window has
   passed, so a control case can show that something did not happen.
 
+The test server runs a flat world: bedrock at y=-64, dirt up to y=62, grass at y=63, air from y=64.
+It has no fluids, structures or animals. Random ticks, mob spawning and the day cycle are off, the
+time is fixed at 6000 and the difficulty is peaceful. The library reads each setting back before
+the first test and fails the run if the server did not take it.
+
 The library compiles against JUnit and Gson without shipping them: declare both in the consuming build.
 
 ### Example
