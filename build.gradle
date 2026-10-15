@@ -1,55 +1,39 @@
-plugins {
-    id 'java-library'
-    id 'xyz.jpenilla.run-paper' version '3.1.0'
-    id 'io.papermc.paperweight.userdev' version '2.0.0-beta.24'
-}
+// Fails the build when the release artifacts drift from what consumers download:
+// exact jar names, a loadable plugin jar, and a CI release glob that matches both.
+tasks.register('verifyDist') {
+    dependsOn ':plugin:jar', ':library:jar'
+    def pluginDist = project(':plugin').layout.buildDirectory.dir('dist')
+    def libraryDist = project(':library').layout.buildDirectory.dir('dist')
+    def workflow = layout.projectDirectory.file('.github/workflows/ci.yaml')
+    def rootDir = layout.projectDirectory.asFile.toPath()
+    def version = project.plugin_version
+    def mc = project.minecraft_version
+    doLast {
+        def pluginJar = "testutils-${version}+${mc}-paper.jar"
+        def libraryJar = "testutils-library-${version}.jar"
 
-group = 'lol.hub'
-version = project.plugin_version
+        [[pluginDist.get().asFile, pluginJar], [libraryDist.get().asFile, libraryJar]].each { dir, name ->
+            def found = (dir.list() ?: [] as String[]).toList()
+            if (found != [name]) throw new GradleException("${dir} must hold exactly [${name}], found ${found} (run clean after a version bump)")
+        }
 
-repositories {
-    mavenCentral()
-    maven {
-        url = 'https://repo.papermc.io/repository/maven-public/'
-        content {
-            includeGroup 'com.mojang'
-            includeGroup 'io.papermc.paper'
-            includeGroup 'net.kyori'
-            includeGroup 'net.md-5'
+        new java.util.zip.ZipFile(new File(pluginDist.get().asFile, pluginJar)).withCloseable { zip ->
+            ['plugin.yml', 'lol/hub/testutils/Plugin.class'].each {
+                if (zip.getEntry(it) == null) throw new GradleException("${pluginJar} lacks ${it}")
+            }
+            // Paper rejects an api-version that still holds the template placeholder.
+            def metadata = zip.getInputStream(zip.getEntry('plugin.yml')).getText('UTF-8')
+            if (metadata.contains('@')) throw new GradleException("${pluginJar} has an unfilled placeholder in plugin.yml")
+        }
+
+        def globs = workflow.asFile.readLines().dropWhile { !it.trim().startsWith('files:') }.drop(1)
+                .takeWhile { it.startsWith(' ' * 12) }*.trim().findAll { it }
+        if (globs.isEmpty()) throw new GradleException("no release 'files:' globs found in ${workflow}")
+        [new File(pluginDist.get().asFile, pluginJar), new File(libraryDist.get().asFile, libraryJar)].each { jar ->
+            def rel = rootDir.relativize(jar.toPath())
+            if (!globs.any { java.nio.file.FileSystems.default.getPathMatcher("glob:${it}").matches(rel) })
+                throw new GradleException("no release glob in ${globs} matches ${rel}")
         }
     }
 }
-
-dependencies {
-    paperweight.paperDevBundle("${project.minecraft_version}.build.+")
-}
-
-java {
-    toolchain.languageVersion = JavaLanguageVersion.of(project.java_version)
-}
-tasks.withType(JavaCompile).configureEach {
-    it.options.release = Integer.parseInt(project.java_version)
-    it.options.encoding = 'UTF-8'
-}
-
-tasks {
-    runServer {
-        minecraftVersion("${project.minecraft_version}")
-        jvmArgs("-Dcom.mojang.eula.agree=true", "-DPaper.skipServerPropertiesComments=true")
-    }
-}
-
-processResources {
-    def modVersion = version
-    def mcVersion = minecraft_version
-    inputs.property('modVersion', modVersion)
-    inputs.property('mcVersion', mcVersion)
-    filteringCharset = 'UTF-8'
-    filesMatching('plugin.yml') {
-        filter { line -> line.replace('@mod_version@', modVersion) }
-        filter { line -> line.replace('@minecraft_version@', mcVersion) }
-    }
-}
-
-jar.archiveFileName.set("${project.name.toLowerCase()}-${project.version}+${project.minecraft_version}-paper.jar")
-jar.destinationDirectory.set(layout.buildDirectory.dir('dist'))
+tasks.register('check') { dependsOn 'verifyDist' }

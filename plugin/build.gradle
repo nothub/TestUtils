@@ -1,0 +1,55 @@
+plugins {
+    id 'java-library'
+    id 'xyz.jpenilla.run-paper' version '3.1.0'
+    id 'io.papermc.paperweight.userdev' version '2.0.0-beta.24'
+}
+
+group = 'lol.hub'
+version = project.plugin_version
+
+repositories {
+    mavenCentral()
+    maven {
+        url = 'https://repo.papermc.io/repository/maven-public/'
+        content {
+            includeGroup 'com.mojang'
+            includeGroup 'io.papermc.paper'
+            includeGroup 'net.kyori'
+            includeGroup 'net.md-5'
+        }
+    }
+}
+
+dependencies {
+    paperweight.paperDevBundle("${project.minecraft_version}.build.+")
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(project.java_version)
+}
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = Integer.parseInt(project.java_version)
+    it.options.encoding = 'UTF-8'
+}
+
+tasks {
+    runServer {
+        minecraftVersion("${project.minecraft_version}")
+        jvmArgs("-Dcom.mojang.eula.agree=true", "-DPaper.skipServerPropertiesComments=true")
+    }
+}
+
+processResources {
+    def modVersion = version
+    def mcVersion = minecraft_version
+    inputs.property('modVersion', modVersion)
+    inputs.property('mcVersion', mcVersion)
+    filteringCharset = 'UTF-8'
+    filesMatching('plugin.yml') {
+        filter { line -> line.replace('@mod_version@', modVersion) }
+        filter { line -> line.replace('@minecraft_version@', mcVersion) }
+    }
+}
+
+jar.archiveFileName.set("testutils-${project.version}+${project.minecraft_version}-paper.jar")
+jar.destinationDirectory.set(layout.buildDirectory.dir('dist'))

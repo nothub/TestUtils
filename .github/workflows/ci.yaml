@@ -34,4 +34,6 @@ jobs:
         with:
           name: '${{ github.ref_name }} (${{ env.MINECRAFT_VERSION }})'
           body: 'Release generated at commit: ${{ github.sha }}'
-          files: 'build/dist/*.jar'
+          files: |
+            plugin/build/dist/*.jar
+            library/build/dist/*.jar

@@ -38,6 +38,20 @@ data get block 0 64 2 Items
 tu remove bot
 ```
 
+### Build
+
+Two subprojects, two jars:
+
+| Jar | Contents |
+|---|---|
+| `plugin/build/dist/testutils-<version>+<mc>-paper.jar` | the Paper plugin |
+| `library/build/dist/testutils-library-<version>.jar` | test-side library (JUnit and Gson are compile-only, consumers declare their own) |
+
+```
+./gradlew check build         # builds both jars and verifies their names and the release globs
+./gradlew :plugin:runServer   # dev server with the plugin
+```
+
 ### Limits
 
 - Nothing ticks the fake player's connection, so it has no physics and no
