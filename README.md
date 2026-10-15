@@ -74,6 +74,12 @@ class SpawnTest {
   `Test failed. Count: N` carry their count. Any other reply (typo, unknown block,
   unloaded position) throws with the reply text.
 - `command(line)` runs any console command and returns everything it wrote back.
+- `Waiting.waitUntil(timeout, query, holds)` re-runs the query (any `Supplier`, such as
+  `() -> server.check("if ...")`) about every 50 ms until `holds` accepts its value, and returns that value.
+  After the timeout it fails with the last value. Use it instead of a fixed sleep.
+- `Waiting.holdsFor(window, query, holds)` re-runs the query for the whole window and fails
+  as soon as a value breaks `holds`, with that value. It returns only after the window has
+  passed, so a control case can show that something did not happen.
 
 The library compiles against JUnit and Gson without shipping them: declare both in the consuming build.
 

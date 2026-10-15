@@ -138,7 +138,7 @@ public final class TestServer implements AutoCloseable {
         while (Instant.now().isBefore(deadline)) {
             if (Files.exists(log) && Files.readString(log).contains("Done (")) return;
             if (!process.isAlive()) throw new IllegalStateException("server exited early, see " + log);
-            sleep(100);
+            Waiting.pause(Duration.ofMillis(100));
         }
         throw new IllegalStateException("server not ready after " + READY_TIMEOUT + ", see " + log);
     }
@@ -149,17 +149,8 @@ public final class TestServer implements AutoCloseable {
                 return new Rcon(port, RCON_PASSWORD);
             } catch (IOException e) {
                 if (attempt >= 50) throw e;
-                sleep(100);
+                Waiting.pause(Duration.ofMillis(100));
             }
-        }
-    }
-
-    private static void sleep(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(e);
         }
     }
 
