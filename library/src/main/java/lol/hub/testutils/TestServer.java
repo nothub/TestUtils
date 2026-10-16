@@ -29,6 +29,7 @@ public final class TestServer implements AutoCloseable {
     private static final int MAX_PORT_ATTEMPTS = 5;
     // A cold start downloads and patches the vanilla jar first.
     private static final Duration READY_TIMEOUT = Duration.ofMinutes(5);
+    private static final int EXCERPT_LINES = 40;
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(60);
     private static final Duration MARKER_TIMEOUT = Duration.ofSeconds(30);
     // Relative to the test JVM's working directory, which Gradle sets to the project directory.
@@ -95,13 +96,18 @@ public final class TestServer implements AutoCloseable {
 
     /** Boots again on new ports when a bind fails, which happens when parallel runs pick the same port. */
     static TestServer start(PortSource ports, Path logCopy, Path paperRepo) throws IOException {
+        return start(ports, logCopy, Path.of(property("testutils.paperJar")), paperRepo, READY_TIMEOUT);
+    }
+
+    static TestServer start(PortSource ports, Path logCopy, Path paperJar, Path paperRepo, Duration readyTimeout) throws IOException {
         long begin = System.nanoTime();
         ServerRegistry registry = ServerRegistry.at(paperRepo);
         registry.reapOrphans();
-        boolean cold = PaperRepo.patch(Path.of(property("testutils.paperJar")), paperRepo, List.of());
+        boolean cold = PaperRepo.patch(paperJar, paperRepo, List.of());
+        Launch launch = new Launch(logCopy, paperJar, paperRepo, registry, readyTimeout);
         for (int attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
             try {
-                return boot(ports.next(), ports.next(), logCopy, paperRepo, registry, begin, cold);
+                return boot(ports.next(), ports.next(), launch, begin, cold);
             } catch (PortInUse e) {
                 // Next attempt picks new ports.
             }
@@ -109,7 +115,11 @@ public final class TestServer implements AutoCloseable {
         throw new IllegalStateException("server could not bind its ports in " + MAX_PORT_ATTEMPTS + " attempts");
     }
 
-    private static TestServer boot(int gamePort, int rconPort, Path logCopy, Path paperRepo, ServerRegistry registry, long begin, boolean cold) throws IOException, PortInUse {
+    /** What one start needs besides its ports. */
+    private record Launch(Path logCopy, Path paperJar, Path paperRepo, ServerRegistry registry, Duration readyTimeout) {
+    }
+
+    private static TestServer boot(int gamePort, int rconPort, Launch launch, long begin, boolean cold) throws IOException, PortInUse {
         Path dir = Files.createTempDirectory("testutils-");
         Path plugins = Files.createDirectory(dir.resolve("plugins"));
         // The plugin under test may be TestUtils itself: a second copy would clash on the plugin name.
@@ -144,7 +154,7 @@ public final class TestServer implements AutoCloseable {
 
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         String runMarker = ServerRegistry.newMarker();
-        Process process = new ProcessBuilder(java.toString(), PaperRepo.jvmArg(paperRepo), "-D" + ServerRegistry.MARKER_PROPERTY + "=" + runMarker, "-jar", property("testutils.paperJar"), "--nogui")
+        Process process = new ProcessBuilder(java.toString(), PaperRepo.jvmArg(launch.paperRepo()), "-D" + ServerRegistry.MARKER_PROPERTY + "=" + runMarker, "-jar", launch.paperJar().toString(), "--nogui")
                 .directory(dir.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(dir.resolve("server.log").toFile())
@@ -152,13 +162,13 @@ public final class TestServer implements AutoCloseable {
         ServerRegistry.Registration registration;
         try {
             // Fails once the JVM is shutting down, e.g. a test thread that kept going after Ctrl-C.
-            registration = registry.register(process, runMarker);
+            registration = launch.registry().register(process, runMarker);
         } catch (IOException | RuntimeException e) {
             process.destroyForcibly();
             throw e;
         }
         try {
-            awaitReady(process, dir.resolve("server.log"), rconPort);
+            awaitReady(process, dir.resolve("server.log"), rconPort, launch.readyTimeout());
             Rcon rcon = connect(rconPort, rconPassword);
             try {
                 setUpWorld(rcon);
@@ -173,7 +183,7 @@ public final class TestServer implements AutoCloseable {
                     throw new IllegalStateException("RCON command failed: say " + marker, e);
                 }
             }, MARKER_TIMEOUT);
-            return new TestServer(dir, logCopy, rconPort, process, rcon, watcher, Duration.ofNanos(System.nanoTime() - begin), cold, registration);
+            return new TestServer(dir, launch.logCopy(), rconPort, process, rcon, watcher, Duration.ofNanos(System.nanoTime() - begin), cold, registration);
         } catch (PortInUse e) {
             process.destroyForcibly();
             registration.close();
@@ -327,8 +337,8 @@ public final class TestServer implements AutoCloseable {
      * Ready means "Done (" and our own "RCON running on" line. A taken RCON port only logs a warning and the
      * server still finishes booting, so without the second line we would talk to whoever holds the port.
      */
-    private static void awaitReady(Process process, Path log, int rconPort) throws IOException, PortInUse {
-        Instant deadline = Instant.now().plus(READY_TIMEOUT);
+    private static void awaitReady(Process process, Path log, int rconPort, Duration timeout) throws IOException, PortInUse {
+        Instant deadline = Instant.now().plus(timeout);
         while (Instant.now().isBefore(deadline)) {
             String text = Files.exists(log) ? Files.readString(log) : "";
             if (text.contains("FAILED TO BIND TO PORT")) throw new PortInUse();
@@ -336,10 +346,18 @@ public final class TestServer implements AutoCloseable {
                 if (text.contains("RCON running on 127.0.0.1:" + rconPort)) return;
                 throw new PortInUse();
             }
-            if (!process.isAlive()) throw new IllegalStateException("server exited early, see " + log);
+            if (!process.isAlive()) throw new IllegalStateException("server exited early with code " + process.exitValue() + "." + excerpt(log));
             Waiting.pause(Duration.ofMillis(100));
         }
-        throw new IllegalStateException("server not ready after " + READY_TIMEOUT + ", see " + log);
+        throw new IllegalStateException("server not ready after " + timeout + "." + excerpt(log));
+    }
+
+    /** The reason a boot failed is in the last lines of the log, so the failure carries them instead of a path to look up. */
+    private static String excerpt(Path log) throws IOException {
+        // Decoded leniently: a crashing server can write bytes that are no valid UTF-8.
+        List<String> lines = Files.exists(log) ? new String(Files.readAllBytes(log), java.nio.charset.StandardCharsets.UTF_8).lines().toList() : List.of();
+        List<String> tail = lines.subList(Math.max(0, lines.size() - EXCERPT_LINES), lines.size());
+        return " Last " + tail.size() + " lines of " + log + ":\n" + String.join("\n", tail);
     }
 
     private static Rcon connect(int port, String password) throws IOException {

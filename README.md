@@ -106,6 +106,8 @@ class SpawnTest {
   blames the plugin ("Could not pass event X to PluginName v1"), or any entry with a stack frame in the
   package of the `main` class from the jar's `plugin.yml`. Paper's and other plugins' errors are ignored. Errors
   logged while the server boots fail the first test.
+- A server that exits or never gets ready fails the start with the exit code or the timeout and the last 40
+  log lines in the message. A corrupt Paper jar fails the launcher's patch pass, and the message carries its output.
 - When the server stops, its log is copied to `build/testutils/server.log` (relative to the test JVM's
   working directory, which is the project directory under Gradle).
 - Next to the log it writes `build/testutils/timing.txt`: `boot_seconds`, `teardown_seconds`, their sum
