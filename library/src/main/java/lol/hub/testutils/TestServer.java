@@ -68,8 +68,11 @@ public final class TestServer implements AutoCloseable {
     private final AtomicInteger nextBotCounter = new AtomicInteger();
     private final Duration bootTime;
     private final boolean coldRepo;
+    private final ServerRegistry.Registration registration;
 
-    private TestServer(Path dir, Path logCopy, int rconPort, Process process, Rcon rcon, LogWatcher watcher, Duration boot, boolean coldRepo) {
+    private TestServer(Path dir, Path logCopy, int rconPort, Process process, Rcon rcon, LogWatcher watcher, Duration boot, boolean coldRepo,
+                       ServerRegistry.Registration registration) {
+        this.registration = registration;
         this.bootTime = boot;
         this.coldRepo = coldRepo;
         this.dir = dir;
@@ -91,10 +94,12 @@ public final class TestServer implements AutoCloseable {
     /** Boots again on new ports when a bind fails, which happens when parallel runs pick the same port. */
     static TestServer start(PortSource ports, Path logCopy, Path paperRepo) throws IOException {
         long begin = System.nanoTime();
+        ServerRegistry registry = ServerRegistry.at(paperRepo);
+        registry.reapOrphans();
         boolean cold = PaperRepo.patch(Path.of(property("testutils.paperJar")), paperRepo, List.of());
         for (int attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
             try {
-                return boot(ports.next(), ports.next(), logCopy, paperRepo, begin, cold);
+                return boot(ports.next(), ports.next(), logCopy, paperRepo, registry, begin, cold);
             } catch (PortInUse e) {
                 // Next attempt picks new ports.
             }
@@ -102,7 +107,7 @@ public final class TestServer implements AutoCloseable {
         throw new IllegalStateException("server could not bind its ports in " + MAX_PORT_ATTEMPTS + " attempts");
     }
 
-    private static TestServer boot(int gamePort, int rconPort, Path logCopy, Path paperRepo, long begin, boolean cold) throws IOException, PortInUse {
+    private static TestServer boot(int gamePort, int rconPort, Path logCopy, Path paperRepo, ServerRegistry registry, long begin, boolean cold) throws IOException, PortInUse {
         Path dir = Files.createTempDirectory("testutils-");
         Path plugins = Files.createDirectory(dir.resolve("plugins"));
         // The plugin under test may be TestUtils itself: a second copy would clash on the plugin name.
@@ -136,11 +141,20 @@ public final class TestServer implements AutoCloseable {
                 ""));
 
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
-        Process process = new ProcessBuilder(java.toString(), PaperRepo.jvmArg(paperRepo), "-jar", property("testutils.paperJar"), "--nogui")
+        String runMarker = ServerRegistry.newMarker();
+        Process process = new ProcessBuilder(java.toString(), PaperRepo.jvmArg(paperRepo), "-D" + ServerRegistry.MARKER_PROPERTY + "=" + runMarker, "-jar", property("testutils.paperJar"), "--nogui")
                 .directory(dir.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(dir.resolve("server.log").toFile())
                 .start();
+        ServerRegistry.Registration registration;
+        try {
+            // Fails once the JVM is shutting down, e.g. a test thread that kept going after Ctrl-C.
+            registration = registry.register(process, runMarker);
+        } catch (IOException | RuntimeException e) {
+            process.destroyForcibly();
+            throw e;
+        }
         try {
             awaitReady(process, dir.resolve("server.log"), rconPort);
             Rcon rcon = connect(rconPort, rconPassword);
@@ -157,13 +171,15 @@ public final class TestServer implements AutoCloseable {
                     throw new IllegalStateException("RCON command failed: say " + marker, e);
                 }
             }, MARKER_TIMEOUT);
-            return new TestServer(dir, logCopy, rconPort, process, rcon, watcher, Duration.ofNanos(System.nanoTime() - begin), cold);
+            return new TestServer(dir, logCopy, rconPort, process, rcon, watcher, Duration.ofNanos(System.nanoTime() - begin), cold, registration);
         } catch (PortInUse e) {
             process.destroyForcibly();
+            registration.close();
             deleteTree(dir);
             throw e;
         } catch (IOException | RuntimeException e) {
             process.destroyForcibly();
+            registration.close();
             throw e;
         }
     }
@@ -219,6 +235,10 @@ public final class TestServer implements AutoCloseable {
         return watcher.pluginErrors();
     }
 
+    long pid() {
+        return process.pid();
+    }
+
     int rconPort() {
         return rconPort;
     }
@@ -244,6 +264,7 @@ public final class TestServer implements AutoCloseable {
         } finally {
             process.destroyForcibly();
             teardown = Duration.ofNanos(System.nanoTime() - closing);
+            registration.close();
         }
         try {
             Files.createDirectories(logCopy.getParent());

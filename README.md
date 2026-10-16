@@ -158,6 +158,14 @@ pins one Paper build (`paper_build`, `paper_sha256` in `gradle.properties`),
 downloads and verifies it once into `<gradle user home>/caches/testutils/paper`,
 boots it in a temp directory with the plugin jar, and talks to it over RCON.
 
+### No orphan servers
+
+When the test JVM is interrupted or terminated (Ctrl-C of Gradle), a shutdown hook sends the server SIGTERM
+and kills it after 10 s. A `kill -9` runs no hooks, so every server also gets a run marker
+(`-Dtestutils.run=<uuid>` on its command line) and a record in `<gradle user home>/caches/testutils/paper/servers/<pid>.properties`
+with the server's and its owner's pid and start time. Before booting, a run stops every marked server whose owner
+is gone. A process without our marker, such as `runServer`, is never touched, even when a record names its pid.
+
 ### Paper cache and offline runs
 
 Gradle downloads the pinned Paper jar once into `<gradle user home>/caches/testutils/paper`. Paper's
