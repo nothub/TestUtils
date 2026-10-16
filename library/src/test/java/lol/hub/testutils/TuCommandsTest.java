@@ -78,14 +78,41 @@ class TuCommandsTest {
     }
 
     @Test
+    void blockReply(TestServer server) {
+        server.command("forceload add 1060 1000");
+        server.command("setblock 1060 64 1000 minecraft:oak_stairs[facing=east,half=top,shape=straight,waterlogged=false]");
+        server.command("setblock 1061 64 1000 stone");
+        server.command("setblock 1062 64 1000 air");
+        assertEquals(json("{\"ok\":true,\"pos\":[1060,64,1000],\"type\":\"minecraft:oak_stairs\","
+                        + "\"state\":{\"facing\":\"east\",\"half\":\"top\",\"shape\":\"straight\",\"waterlogged\":\"false\"}}"),
+                server.tu("block 1060 64 1000"));
+        assertEquals(json("{\"ok\":true,\"pos\":[1061,64,1000],\"type\":\"minecraft:stone\",\"state\":{}}"), server.tu("block 1061 64 1000"));
+        assertEquals(json("{\"ok\":true,\"pos\":[1062,64,1000],\"type\":\"minecraft:air\",\"state\":{}}"), server.tu("block 1062 64 1000"));
+    }
+
+    @Test
+    void containerReply(TestServer server) {
+        server.command("forceload add 1070 1000");
+        server.command("setblock 1070 64 1000 chest{Items:[{Slot:4b,id:\"minecraft:dirt\",count:3},{Slot:26b,id:\"minecraft:iron_hoe\",count:1,components:{\"minecraft:damage\":9}}]}");
+        server.command("setblock 1068 64 1000 hopper");
+        server.command("setblock 1066 64 1000 stone");
+        assertEquals(json("{\"ok\":true,\"pos\":[1070,64,1000],\"block\":\"minecraft:chest\",\"size\":27,\"items\":["
+                        + "{\"slot\":4,\"id\":\"minecraft:dirt\",\"count\":3,\"damage\":0,\"item_model\":\"minecraft:dirt\"},"
+                        + "{\"slot\":26,\"id\":\"minecraft:iron_hoe\",\"count\":1,\"damage\":9,\"item_model\":\"minecraft:iron_hoe\"}]}"),
+                server.tu("container 1070 64 1000"));
+        assertEquals(json("{\"ok\":true,\"pos\":[1068,64,1000],\"block\":\"minecraft:hopper\",\"size\":5,\"items\":[]}"), server.tu("container 1068 64 1000"));
+        assertError(server.tu("container 1066 64 1000"), "no container at 1066 64 1000");
+    }
+
+    @Test
     void badArgumentsAnswerWithAnErrorAndLogNothing(TestServer server) throws IOException {
         server.tu("spawn badargs 1040 64 1000");
         List<String> wrongShape = List.of("", "bogus badargs", "spawn", "spawn x 1", "spawn x 1 2", "spawn x 1 2 3 4", "spawn x a b c",
                 "remove", "close", "inventory", "inventory badargs extra", "as badargs", "open badargs", "open badargs a b c", "open badargs 1 2",
-                "use badargs 1 2", "use badargs a b c");
+                "use badargs 1 2", "use badargs a b c", "block", "block 1 2", "block a b c", "block 1 2 3 4", "container", "container 1 2 3 4");
         List<String> outsideTheWorld = List.of("spawn out1 NaN 64 0", "spawn out2 Infinity 64 0", "spawn out3 1e400 64 0",
                 "spawn out4 0 64 1e10", "spawn out5 4000 100000 4000", "spawn out6 4000 -100000 4000",
-                "open badargs 2000000000 64 0", "use badargs 0 100000 0");
+                "open badargs 2000000000 64 0", "use badargs 0 100000 0", "block 2000000000 64 0", "block 0 100000 0", "container 0 -100000 0");
         List<String> unknown = List.of("open nobody 1 2 3", "use nobody 1 2 3", "as nobody help", "close nobody", "remove nobody",
                 "use badargs 1040 64 1000 sideways");
         for (String args : List.of(wrongShape, outsideTheWorld, unknown).stream().flatMap(List::stream).toList()) assertErrorShape(server, args);

@@ -27,10 +27,13 @@ Alias `/tu`, permission `testutils.use` (op).
 | `/tu close <name>` | Close its open inventory view. Fires `InventoryCloseEvent`. |
 | `/tu use <name> <x> <y> <z> [face]` | Right-click the block with the main-hand item. Fires `PlayerInteractEvent`. Face defaults to `up`. |
 | `/tu inventory <name>` | Report what it carries: every non-empty slot and the main-hand item. |
+| `/tu block <x> <y> <z>` | Report the block's type and state properties. Needs no fake player. |
+| `/tu container <x> <y> <z>` | Report the slots of the container block there. Needs no fake player. |
 
 Vanilla commands cover the rest, since the fake player is a real player:
 `tp`, `give`, `clear`, `item replace entity <name> weapon.mainhand with ...`,
-`data get entity <name> Inventory`, `data get block <x> <y> <z> Items`.
+`data get entity <name> Inventory`. The `inventory`, `block` and `container` queries answer in JSON, so a test
+never has to parse the text those commands print.
 
 ### Replies
 
@@ -49,6 +52,8 @@ None of these log an error. An error reply holds exactly `ok` and `error`.
 | `close` | `{"ok":true,"name":"bot"}` |
 | `use` | `{"ok":true,"name":"bot","item":"minecraft:iron_hoe","pos":[0,64,2],"result":"Success"}`, `item` is the main-hand item before the click, `result` the vanilla interaction result (`Success`, `Pass`, `Fail`, ...) |
 | `inventory` | `{"ok":true,"name":"bot","main_hand":{"id":"minecraft:iron_hoe","count":1,"damage":7,"item_model":"minecraft:iron_hoe"},"items":[{"slot":0,"id":"minecraft:iron_hoe","count":1,"damage":7,"item_model":"minecraft:iron_hoe"}]}`, `main_hand` is `null` for an empty hand, empty slots are left out, `damage` is 0 for an item that can't be damaged. Slots are numbered like Bukkit's `PlayerInventory`: 0-8 hotbar, 9-35 bag, 36-39 boots to helmet, 40 off hand. |
+| `block` | `{"ok":true,"pos":[0,64,0],"type":"minecraft:oak_stairs","state":{"facing":"east","half":"top","shape":"straight","waterlogged":"false"}}`, property values are vanilla's names as strings, `state` is `{}` for a block without properties |
+| `container` | `{"ok":true,"pos":[0,64,0],"block":"minecraft:chest","size":27,"items":[{"slot":4,"id":"minecraft:dirt","count":3,"damage":0,"item_model":"minecraft:dirt"}]}`, `items` holds the non-empty slots like `inventory` does, a block that is no container answers `no container at x y z`. |
 
 A fake player is not op. `as` runs commands under the permissions it has.
 
@@ -75,6 +80,8 @@ class SpawnTest {
   A plain pass counts 1 and a plain fail 0. Vanilla's `Test passed. Count: N` and
   `Test failed. Count: N` carry their count. Any other reply (typo, unknown block,
   unloaded position) throws with the reply text.
+- `block(pos)` returns a `Block(type, state)` and `container(pos)` a `Container(block, size, slots)`, both typed
+  from the JSON replies. `container` throws for a block that is no container. Neither loads anything from text.
 - `command(line)` runs any console command and returns everything it wrote back.
 - `Waiting.waitUntil(timeout, query, holds)` re-runs the query (any `Supplier`, such as
   `() -> server.check("if ...")`) about every 50 ms until `holds` accepts its value, and returns that value.

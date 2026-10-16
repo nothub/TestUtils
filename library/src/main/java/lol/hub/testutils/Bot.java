@@ -3,8 +3,6 @@ package lol.hub.testutils;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
-import java.util.Map;
-import java.util.TreeMap;
 
 /** A fake player. A call the server refuses throws, so a test never has to check a reply. {@link #run} is the exception: it returns the command's success. */
 public final class Bot {
@@ -57,18 +55,8 @@ public final class Bot {
     /** What the bot carries right now. */
     public Inventory inventory() {
         JsonObject reply = tu("inventory " + name);
-        Map<Integer, Item> slots = new TreeMap<>();
-        for (JsonElement entry : reply.getAsJsonArray("items")) {
-            JsonObject json = entry.getAsJsonObject();
-            slots.put(json.get("slot").getAsInt(), item(json));
-        }
         JsonElement mainHand = reply.get("main_hand");
-        return new Inventory(slots, mainHand.isJsonNull() ? null : item(mainHand.getAsJsonObject()));
-    }
-
-    private static Item item(JsonObject json) {
-        return new Item(json.get("id").getAsString(), json.get("count").getAsInt(), json.get("damage").getAsInt(),
-                json.get("item_model").getAsString());
+        return new Inventory(Item.slots(reply.getAsJsonArray("items")), mainHand.isJsonNull() ? null : Item.parse(mainHand.getAsJsonObject()));
     }
 
     /** Disconnects the bot. Safe to call twice. */

@@ -15,6 +15,7 @@ import org.bukkit.World;
 import org.bukkit.block.Container;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.craftbukkit.block.data.CraftBlockData;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -38,6 +39,8 @@ public final class Plugin extends JavaPlugin {
         USAGE.put("close", "close <name>");
         USAGE.put("use", "use <name> <x> <y> <z> [face]");
         USAGE.put("inventory", "inventory <name>");
+        USAGE.put("block", "block <x> <y> <z>");
+        USAGE.put("container", "container <x> <y> <z>");
     }
 
     /** A reply the caller can fix: it goes out as {"ok":false,"error":...}, not as an exception. */
@@ -80,18 +83,23 @@ public final class Plugin extends JavaPlugin {
             case "spawn" -> arity(action, args, 2, 5);
             case "remove", "close", "inventory" -> arity(action, args, 2);
             case "open" -> arity(action, args, 5);
+            case "block", "container" -> arity(action, args, 4);
             case "use" -> arity(action, args, 5, 6);
             case "as" -> {
                 if (args.length < 3) throw usage(action);
             }
             default -> throw new AssertionError(action);
         }
+        if (action.equals("block") || action.equals("container")) {
+            query(action, sender, args, reply);
+            return;
+        }
         String name = args[1];
         reply.addProperty("name", name);
 
         if (action.equals("spawn")) {
             if (fakes.containsKey(name)) throw new CommandError(name + " already exists");
-            World world = sender instanceof Player p ? p.getWorld() : getServer().getWorlds().getFirst();
+            World world = worldOf(sender);
             Location loc = args.length == 5
                     ? new Location(world, number(args[2]), number(args[3]), number(args[4]))
                     : world.getSpawnLocation();
@@ -125,17 +133,9 @@ public final class Plugin extends JavaPlugin {
             }
             case "close" -> fake.closeInventory();
             case "inventory" -> {
-                ItemStack[] contents = fake.getInventory().getContents();
-                JsonArray items = new JsonArray();
-                for (int slot = 0; slot < contents.length; slot++) {
-                    if (contents[slot] == null || contents[slot].isEmpty()) continue;
-                    JsonObject item = describe(contents[slot]);
-                    item.addProperty("slot", slot);
-                    items.add(item);
-                }
                 ItemStack hand = fake.getInventory().getItemInMainHand();
                 reply.add("main_hand", hand.isEmpty() ? JsonNull.INSTANCE : describe(hand));
-                reply.add("items", items);
+                reply.add("items", slots(fake.getInventory().getContents()));
             }
             case "use" -> {
                 BlockPos pos = new BlockPos(integer(args[2]), integer(args[3]), integer(args[4]));
@@ -158,6 +158,49 @@ public final class Plugin extends JavaPlugin {
             }
             default -> throw new AssertionError(action);
         }
+    }
+
+    private World worldOf(CommandSender sender) {
+        return sender instanceof Player p ? p.getWorld() : getServer().getWorlds().getFirst();
+    }
+
+    /** Answers for a block position, which needs no fake player. */
+    private void query(String action, CommandSender sender, String[] args, JsonObject reply) {
+        World world = worldOf(sender);
+        int x = integer(args[1]), y = integer(args[2]), z = integer(args[3]);
+        requireInside(new Location(world, x, y, z));
+        var block = world.getBlockAt(x, y, z);
+        JsonArray pos = new JsonArray();
+        pos.add(x);
+        pos.add(y);
+        pos.add(z);
+        reply.add("pos", pos);
+        if (action.equals("block")) {
+            JsonObject state = new JsonObject();
+            ((CraftBlockData) block.getBlockData()).getState().getValues()
+                    .forEach(value -> state.addProperty(value.property().getName(), value.valueName()));
+            reply.addProperty("type", block.getType().getKey().toString());
+            reply.add("state", state);
+        } else {
+            if (!(block.getState() instanceof Container container)) {
+                throw new CommandError("no container at " + x + " " + y + " " + z);
+            }
+            reply.addProperty("block", block.getType().getKey().toString());
+            reply.addProperty("size", container.getInventory().getSize());
+            reply.add("items", slots(container.getInventory().getContents()));
+        }
+    }
+
+    /** The non-empty slots, numbered by their index in the inventory. */
+    private static JsonArray slots(ItemStack[] contents) {
+        JsonArray items = new JsonArray();
+        for (int slot = 0; slot < contents.length; slot++) {
+            if (contents[slot] == null || contents[slot].isEmpty()) continue;
+            JsonObject item = describe(contents[slot]);
+            item.addProperty("slot", slot);
+            items.add(item);
+        }
+        return items;
     }
 
     private static JsonObject describe(ItemStack stack) {

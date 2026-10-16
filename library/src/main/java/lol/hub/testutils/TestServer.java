@@ -14,8 +14,10 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -219,6 +221,26 @@ public final class TestServer implements AutoCloseable {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("execute " + condition + " answered with " + e.getMessage(), e);
         }
+    }
+
+    /** The block at the position, loading its chunk if needed. */
+    public Block block(Pos pos) {
+        JsonObject reply = query("block " + pos);
+        Map<String, String> state = new HashMap<>();
+        reply.getAsJsonObject("state").asMap().forEach((property, value) -> state.put(property, value.getAsString()));
+        return new Block(reply.get("type").getAsString(), state);
+    }
+
+    /** The slots of the container at the position. Throws when the block is no container. */
+    public Container container(Pos pos) {
+        JsonObject reply = query("container " + pos);
+        return new Container(reply.get("block").getAsString(), reply.get("size").getAsInt(), Item.slots(reply.getAsJsonArray("items")));
+    }
+
+    private JsonObject query(String args) {
+        JsonObject reply = tu(args);
+        if (!reply.get("ok").getAsBoolean()) throw new IllegalStateException("tu " + args + " failed: " + reply.get("error").getAsString());
+        return reply;
     }
 
     /** A fresh {@link Area} no other test has used. Close it to remove its bots. */
