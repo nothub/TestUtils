@@ -32,10 +32,42 @@ tasks.withType(JavaCompile).configureEach {
     it.options.encoding = 'UTF-8'
 }
 
+// A human joins at localhost, an agent drives the console over RCON. Loopback only, so the
+// fixed password exposes nothing. Written on every launch: run/ outlives the sessions.
+def runServerProperties = [
+        'server-ip'        : '127.0.0.1',
+        'server-port'      : '25565',
+        'online-mode'      : 'false',
+        'white-list'       : 'false',
+        'enforce-whitelist': 'false',
+        'enable-rcon'      : 'true',
+        'rcon.port'        : '25575',
+        'rcon.password'    : 'testutils',
+]
+
 tasks {
     runServer {
         minecraftVersion("${project.minecraft_version}")
+        // The library project downloads and verifies the pinned jar the tests boot, so a failing
+        // test reproduces on the same build. Without this run-paper fetches the latest build.
+        dependsOn ':library:paperJar'
+        serverJar(layout.file(provider { project(':library').ext.paperJarFile }))
         jvmArgs("-Dcom.mojang.eula.agree=true", "-DPaper.skipServerPropertiesComments=true")
+        doFirst {
+            def file = runDirectory.file('server.properties').get().asFile
+            def written = [] as Set
+            def lines = (file.isFile() ? file.readLines() : []).collect { line ->
+                def key = line.split('=', 2)[0].trim()
+                if (!line.startsWith('#') && runServerProperties.containsKey(key)) {
+                    written << key
+                    return "${key}=${runServerProperties[key]}".toString()
+                }
+                line
+            }
+            runServerProperties.each { key, value -> if (!(key in written)) lines << "${key}=${value}".toString() }
+            file.parentFile.mkdirs()
+            file.text = lines.join('\n') + '\n'
+        }
     }
 }
 

@@ -134,6 +134,20 @@ Two subprojects, two jars:
 ./gradlew :plugin:runServer   # dev server with the plugin
 ```
 
+`runServer` boots the same pinned, verified Paper jar the tests use, not run-paper's latest build.
+On every launch it rewrites these keys in `plugin/run/server.properties` and leaves the others alone:
+
+| Key | Value |
+|---|---|
+| `server-ip`, `server-port` | `127.0.0.1`, `25565` |
+| `online-mode`, `white-list`, `enforce-whitelist` | `false` |
+| `enable-rcon`, `rcon.port` | `true`, `25575` |
+| `rcon.password` | `testutils` |
+
+A stock client joins at `localhost`. An agent sends console commands over RCON on `127.0.0.1:25575` and gets
+each command's output back. Loopback only, so the fixed password exposes nothing. A command that answers a tick
+later (`version`) returns only its first line.
+
 `check` also runs the library's tests against a real Paper server: the build
 pins one Paper build (`paper_build`, `paper_sha256` in `gradle.properties`),
 downloads and verifies it once into `<gradle user home>/caches/testutils/paper`,

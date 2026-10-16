@@ -38,6 +38,7 @@ jar.destinationDirectory.set(layout.buildDirectory.dir('dist'))
 // NMS code compiles against exactly the build the tests boot. The cache lives outside the
 // project, so `clean` never forces a re-download and `build/dist` stays free of foreign jars.
 def paperJarFile = new File(gradle.gradleUserHomeDir, "caches/testutils/paper/paper-${project.minecraft_version}-${project.paper_build}.jar")
+ext.paperJarFile = paperJarFile
 def paperJar = tasks.register('paperJar') {
     def mc = project.minecraft_version
     def paperBuild = project.paper_build
