@@ -101,6 +101,11 @@ class SpawnTest {
   logged while the server boots fail the first test.
 - When the server stops, its log is copied to `build/testutils/server.log` (relative to the test JVM's
   working directory, which is the project directory under Gradle).
+- Next to the log it writes `build/testutils/timing.txt`: `boot_seconds`, `teardown_seconds`, their sum
+  `total_seconds`, and `paper_cache=cold|warm`. Boot counts from patching Paper to the world being set up.
+  Cold means the shared Paper repo (below) was empty when the run began. The same line goes to stdout.
+- The test server also turns Paper's update checker off. Offline it logs three ERROR lines at boot, and it
+  is a network call a test has no use for.
 
 The test server runs a flat world: bedrock at y=-64, dirt up to y=62, grass at y=63, air from y=64.
 It has no fluids, structures or animals. Random ticks, mob spawning and the day cycle are off, the
@@ -152,6 +157,22 @@ later (`version`) returns only its first line.
 pins one Paper build (`paper_build`, `paper_sha256` in `gradle.properties`),
 downloads and verifies it once into `<gradle user home>/caches/testutils/paper`,
 boots it in a temp directory with the plugin jar, and talks to it over RCON.
+
+### Paper cache and offline runs
+
+Gradle downloads the pinned Paper jar once into `<gradle user home>/caches/testutils/paper`. Paper's
+launcher (Paperclip) then fetches Mojang's server jar and its libraries and patches them. The library
+passes `-DbundlerRepoDir` so all of that lands in `repo/` beside the jar, shared by every run, instead of
+in each server's temp directory. Before each boot it runs a `-Dpaperclip.patchonly=true` pass under an
+exclusive file lock, so two builds starting on an empty cache wait for one patch instead of both writing the
+same libraries. A warm pass takes under a second and needs no network.
+
+The first run needs network. After that `./gradlew --offline test --rerun-tasks` passes without any.
+`runServer` uses the same `repo/`. `SharedRepoTest` starts two servers at once on an empty repo, so it needs
+network and skips itself without DNS.
+
+In CI, cache `~/.gradle/caches/testutils/paper` keyed on `<minecraft_version>-<paper_build>`. See `.github/workflows/ci.yaml`,
+which also fails the build when boot plus teardown exceeds 30 s on a cache hit.
 
 ### Limits
 

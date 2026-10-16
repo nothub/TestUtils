@@ -23,7 +23,29 @@ jobs:
           check-latest: true
           cache: 'gradle'
 
+      - name: 'Find Paper pin'
+        run: echo "PAPER_PIN=$(grep -oP '^minecraft_version=\K[0-9.]+' gradle.properties)-$(grep -oP '^paper_build=\K[0-9]+' gradle.properties)" >> $GITHUB_ENV
+
+      # The Paper jar plus Paperclip's patched output, ~170 MB. A hit leaves the test run with no download.
+      - name: 'Cache Paper'
+        id: paper-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.gradle/caches/testutils/paper
+          key: testutils-paper-${{ env.PAPER_PIN }}
+
       - run: ./gradlew --console plain --no-daemon --full-stacktrace check build
+
+      - name: 'Report server boot time'
+        if: always()
+        run: '[ ! -f library/build/testutils/timing.txt ] || { echo "Paper cache hit: ${{ steps.paper-cache.outputs.cache-hit }}"; cat library/build/testutils/timing.txt; }'
+
+      - name: 'Check server boot time'
+        if: steps.paper-cache.outputs.cache-hit == 'true'
+        run: |
+          total=$(grep -oP '^total_seconds=\K[0-9.]+' library/build/testutils/timing.txt)
+          echo "boot plus teardown on a Paper cache hit: ${total} s, limit 30 s"
+          awk -v t="$total" 'BEGIN { exit !(t <= 30) }'
 
       - name: 'Find Minecraft version'
         if: startsWith(github.ref, 'refs/tags/v')

@@ -53,6 +53,8 @@ tasks {
         dependsOn ':library:paperJar'
         serverJar(layout.file(provider { project(':library').ext.paperJarFile }))
         jvmArgs("-Dcom.mojang.eula.agree=true", "-DPaper.skipServerPropertiesComments=true")
+        // The tests patch Paper into this directory once. Without it every run/ directory downloads and patches again.
+        jvmArgumentProviders.add({ ["-DbundlerRepoDir=" + new File(project(':library').ext.paperJarFile.parentFile, 'repo')] } as CommandLineArgumentProvider)
         doFirst {
             def file = runDirectory.file('server.properties').get().asFile
             def written = [] as Set

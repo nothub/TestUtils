@@ -92,6 +92,7 @@ tasks.named('test') {
     inputs.files(paperJar).withPropertyName('paperJar')
     doFirst {
         systemProperty 'testutils.paperJar', paperJarFile.path
+        systemProperty 'testutils.paperRepo', new File(paperJarFile.parentFile, 'repo').path
         systemProperty 'testutils.pluginJar', pluginJar.get().asFile.path
         systemProperty 'testutils.testutilsJar', pluginJar.get().asFile.path
     }

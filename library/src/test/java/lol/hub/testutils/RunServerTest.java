@@ -62,7 +62,7 @@ class RunServerTest {
                 "server-ip=10.1.2.3", "server-port=1234", "online-mode=true", "white-list=true", "enforce-whitelist=true",
                 "enable-rcon=false", "rcon.port=1235", "rcon.password=old", "motd=kept", ""));
 
-        gradle = new ProcessBuilder("./gradlew", "--console", "plain", "--no-daemon", ":plugin:runServer")
+        gradle = new ProcessBuilder("./gradlew", "--console", "plain", "--no-daemon", "--offline", ":plugin:runServer")
                 .directory(copy.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(copy.resolve("gradle.log").toFile())

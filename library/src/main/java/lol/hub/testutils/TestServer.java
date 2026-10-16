@@ -15,6 +15,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -65,8 +66,12 @@ public final class TestServer implements AutoCloseable {
     private final LogWatcher watcher;
     private final AtomicInteger nextAreaIndex = new AtomicInteger();
     private final AtomicInteger nextBotCounter = new AtomicInteger();
+    private final Duration bootTime;
+    private final boolean coldRepo;
 
-    private TestServer(Path dir, Path logCopy, int rconPort, Process process, Rcon rcon, LogWatcher watcher) {
+    private TestServer(Path dir, Path logCopy, int rconPort, Process process, Rcon rcon, LogWatcher watcher, Duration boot, boolean coldRepo) {
+        this.bootTime = boot;
+        this.coldRepo = coldRepo;
         this.dir = dir;
         this.logCopy = logCopy;
         this.rconPort = rconPort;
@@ -79,11 +84,17 @@ public final class TestServer implements AutoCloseable {
         return start(PortSource.LOOPBACK, LOG_COPY);
     }
 
-    /** Boots again on new ports when a bind fails, which happens when parallel runs pick the same port. */
     static TestServer start(PortSource ports, Path logCopy) throws IOException {
+        return start(ports, logCopy, Path.of(property("testutils.paperRepo")));
+    }
+
+    /** Boots again on new ports when a bind fails, which happens when parallel runs pick the same port. */
+    static TestServer start(PortSource ports, Path logCopy, Path paperRepo) throws IOException {
+        long begin = System.nanoTime();
+        boolean cold = PaperRepo.patch(Path.of(property("testutils.paperJar")), paperRepo, List.of());
         for (int attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
             try {
-                return boot(ports.next(), ports.next(), logCopy);
+                return boot(ports.next(), ports.next(), logCopy, paperRepo, begin, cold);
             } catch (PortInUse e) {
                 // Next attempt picks new ports.
             }
@@ -91,7 +102,7 @@ public final class TestServer implements AutoCloseable {
         throw new IllegalStateException("server could not bind its ports in " + MAX_PORT_ATTEMPTS + " attempts");
     }
 
-    private static TestServer boot(int gamePort, int rconPort, Path logCopy) throws IOException, PortInUse {
+    private static TestServer boot(int gamePort, int rconPort, Path logCopy, Path paperRepo, long begin, boolean cold) throws IOException, PortInUse {
         Path dir = Files.createTempDirectory("testutils-");
         Path plugins = Files.createDirectory(dir.resolve("plugins"));
         // The plugin under test may be TestUtils itself: a second copy would clash on the plugin name.
@@ -108,6 +119,9 @@ public final class TestServer implements AutoCloseable {
         new SecureRandom().nextBytes(random);
         String rconPassword = HexFormat.of().formatHex(random);
         Files.writeString(dir.resolve("eula.txt"), "eula=true\n");
+        // The checker reaches out at boot and logs ERROR lines when offline. _version stops Paper from migrating the file.
+        Files.createDirectory(dir.resolve("config"));
+        Files.writeString(dir.resolve("config/paper-global.yml"), "_version: 31\nupdate-checker:\n  enabled: false\n");
         Files.writeString(dir.resolve("server.properties"), String.join("\n",
                 "online-mode=false",
                 "white-list=false",
@@ -122,7 +136,7 @@ public final class TestServer implements AutoCloseable {
                 ""));
 
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
-        Process process = new ProcessBuilder(java.toString(), "-jar", property("testutils.paperJar"), "--nogui")
+        Process process = new ProcessBuilder(java.toString(), PaperRepo.jvmArg(paperRepo), "-jar", property("testutils.paperJar"), "--nogui")
                 .directory(dir.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(dir.resolve("server.log").toFile())
@@ -143,7 +157,7 @@ public final class TestServer implements AutoCloseable {
                     throw new IllegalStateException("RCON command failed: say " + marker, e);
                 }
             }, MARKER_TIMEOUT);
-            return new TestServer(dir, logCopy, rconPort, process, rcon, watcher);
+            return new TestServer(dir, logCopy, rconPort, process, rcon, watcher, Duration.ofNanos(System.nanoTime() - begin), cold);
         } catch (PortInUse e) {
             process.destroyForcibly();
             deleteTree(dir);
@@ -215,6 +229,8 @@ public final class TestServer implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
+        long closing = System.nanoTime();
+        Duration teardown = Duration.ZERO;
         try {
             try {
                 rcon.command("stop");
@@ -227,13 +243,23 @@ public final class TestServer implements AutoCloseable {
             Thread.currentThread().interrupt();
         } finally {
             process.destroyForcibly();
+            teardown = Duration.ofNanos(System.nanoTime() - closing);
         }
         try {
             Files.createDirectories(logCopy.getParent());
             Files.copy(logFile(), logCopy, StandardCopyOption.REPLACE_EXISTING);
+            reportTiming(teardown);
         } finally {
             deleteTree(dir);
         }
+    }
+
+    /** Boot plus teardown is what a test run pays for the server, so CI can read it next to the log. */
+    private void reportTiming(Duration teardown) throws IOException {
+        String report = String.format(Locale.ROOT, "boot_seconds=%.1f%ntotal_seconds=%.1f%nteardown_seconds=%.1f%npaper_cache=%s%n",
+                bootTime.toMillis() / 1000.0, bootTime.plus(teardown).toMillis() / 1000.0, teardown.toMillis() / 1000.0, coldRepo ? "cold" : "warm");
+        Files.writeString(logCopy.resolveSibling("timing.txt"), report);
+        System.out.println("TestUtils server " + report.replace('\n', ' ').strip());
     }
 
     private static void deleteTree(Path dir) throws IOException {
