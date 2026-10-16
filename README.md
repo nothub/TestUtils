@@ -154,7 +154,7 @@ configurations {
     testutilsPin
 }
 
-def testutils = '0.2.0'
+def testutils = '0.2.1'
 dependencies {
     testImplementation "lol.hub:testutils-library:${testutils}"
     testImplementation platform('org.junit:junit-bom:6.1.3')
