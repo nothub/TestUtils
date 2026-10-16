@@ -1,21 +1,27 @@
 // Fails the build when the release artifacts drift from what consumers download:
-// exact jar names, a loadable plugin jar, and a CI release glob that matches both.
+// exact asset names, a loadable plugin jar, the Paper pin, and a CI release glob that matches each.
 tasks.register('verifyDist') {
-    dependsOn ':plugin:jar', ':library:jar'
+    dependsOn ':plugin:jar', ':plugin:pinProperties', ':library:jar'
     def pluginDist = project(':plugin').layout.buildDirectory.dir('dist')
     def libraryDist = project(':library').layout.buildDirectory.dir('dist')
     def workflow = layout.projectDirectory.file('.github/workflows/ci.yaml')
     def rootDir = layout.projectDirectory.asFile.toPath()
     def version = project.plugin_version
     def mc = project.minecraft_version
+    def pin = [minecraft_version: mc, paper_build: project.paper_build, paper_sha256: project.paper_sha256]
     doLast {
         def pluginJar = "testutils-${version}+${mc}-paper.jar"
         def libraryJar = "testutils-library-${version}.jar"
+        def pinFile = "testutils-${version}.properties"
 
-        [[pluginDist.get().asFile, pluginJar], [libraryDist.get().asFile, libraryJar]].each { dir, name ->
-            def found = (dir.list() ?: [] as String[]).toList()
-            if (found != [name]) throw new GradleException("${dir} must hold exactly [${name}], found ${found} (run clean after a version bump)")
+        [[pluginDist.get().asFile, [pinFile, pluginJar]], [libraryDist.get().asFile, [libraryJar]]].each { dir, names ->
+            def found = (dir.list() ?: [] as String[]).toList().sort()
+            if (found != names.sort()) throw new GradleException("${dir} must hold exactly ${names}, found ${found} (run clean after a version bump)")
         }
+
+        def released = new Properties()
+        new File(pluginDist.get().asFile, pinFile).withInputStream { released.load(it) }
+        if (released != pin) throw new GradleException("${pinFile} holds ${released}, gradle.properties pins ${pin}")
 
         new java.util.zip.ZipFile(new File(pluginDist.get().asFile, pluginJar)).withCloseable { zip ->
             ['plugin.yml', 'lol/hub/testutils/Plugin.class'].each {
@@ -34,8 +40,8 @@ tasks.register('verifyDist') {
         def globs = workflow.asFile.readLines().dropWhile { !it.trim().startsWith('files:') }.drop(1)
                 .takeWhile { it.startsWith(' ' * 12) }*.trim().findAll { it }
         if (globs.isEmpty()) throw new GradleException("no release 'files:' globs found in ${workflow}")
-        [new File(pluginDist.get().asFile, pluginJar), new File(libraryDist.get().asFile, libraryJar)].each { jar ->
-            def rel = rootDir.relativize(jar.toPath())
+        [new File(pluginDist.get().asFile, pluginJar), new File(pluginDist.get().asFile, pinFile), new File(libraryDist.get().asFile, libraryJar)].each { asset ->
+            def rel = rootDir.relativize(asset.toPath())
             if (!globs.any { java.nio.file.FileSystems.default.getPathMatcher("glob:${it}").matches(rel) })
                 throw new GradleException("no release glob in ${globs} matches ${rel}")
         }

@@ -58,4 +58,5 @@ jobs:
           body: 'Release generated at commit: ${{ github.sha }}'
           files: |
             plugin/build/dist/*.jar
+            plugin/build/dist/*.properties
             library/build/dist/*.jar

@@ -87,3 +87,12 @@ processResources {
 
 jar.archiveFileName.set("testutils-${project.version}+${project.minecraft_version}-paper.jar")
 jar.destinationDirectory.set(layout.buildDirectory.dir('dist'))
+
+// Released next to the jars, so a consumer pins only the TestUtils version and reads the Paper build from here.
+def pinProperties = tasks.register('pinProperties', WriteProperties) {
+    destinationFile = layout.buildDirectory.file("dist/testutils-${project.version}.properties")
+    property('minecraft_version', project.minecraft_version)
+    property('paper_build', project.paper_build)
+    property('paper_sha256', project.paper_sha256)
+}
+tasks.named('assemble') { dependsOn pinProperties }

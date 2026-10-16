@@ -18,17 +18,17 @@ server console.
 
 Alias `/tu`, permission `testutils.use` (op).
 
-| Command | Effect |
-|---|---|
-| `/tu spawn <name> [x y z]` | Join a fake player, at world spawn by default. |
-| `/tu remove <name>` | Disconnect it. |
-| `/tu as <name> <command...>` | Run a command as the fake player. |
-| `/tu open <name> <x> <y> <z>` | Open the container at that block. Fires `InventoryOpenEvent`. |
-| `/tu close <name>` | Close its open inventory view. Fires `InventoryCloseEvent`. |
+| Command                             | Effect                                                                                             |
+|-------------------------------------|----------------------------------------------------------------------------------------------------|
+| `/tu spawn <name> [x y z]`          | Join a fake player, at world spawn by default.                                                     |
+| `/tu remove <name>`                 | Disconnect it.                                                                                     |
+| `/tu as <name> <command...>`        | Run a command as the fake player.                                                                  |
+| `/tu open <name> <x> <y> <z>`       | Open the container at that block. Fires `InventoryOpenEvent`.                                      |
+| `/tu close <name>`                  | Close its open inventory view. Fires `InventoryCloseEvent`.                                        |
 | `/tu use <name> <x> <y> <z> [face]` | Right-click the block with the main-hand item. Fires `PlayerInteractEvent`. Face defaults to `up`. |
-| `/tu inventory <name>` | Report what it carries: every non-empty slot and the main-hand item. |
-| `/tu block <x> <y> <z>` | Report the block's type and state properties. Needs no fake player. |
-| `/tu container <x> <y> <z>` | Report the slots of the container block there. Needs no fake player. |
+| `/tu inventory <name>`              | Report what it carries: every non-empty slot and the main-hand item.                               |
+| `/tu block <x> <y> <z>`             | Report the block's type and state properties. Needs no fake player.                                |
+| `/tu container <x> <y> <z>`         | Report the slots of the container block there. Needs no fake player.                               |
 
 Vanilla commands cover the rest, since the fake player is a real player:
 `tp`, `give`, `clear`, `item replace entity <name> weapon.mainhand with ...`,
@@ -43,17 +43,17 @@ an unknown action, missing or non-numeric arguments, coordinates outside the wor
 limits, an unknown face, a name that is taken or unknown, a block that is no container.
 None of these log an error. An error reply holds exactly `ok` and `error`.
 
-| Command | Reply |
-|---|---|
-| `spawn` | `{"ok":true,"name":"bot","x":0,"y":64,"z":0}` (block coordinates) |
-| `remove` | `{"ok":true,"name":"bot"}` |
-| `as` | `{"ok":true,"name":"bot","command":"help","success":true}`, `success` is false for an unknown command or one the bot may not run |
-| `open` | `{"ok":true,"name":"bot","block":"minecraft:chest"}` |
-| `close` | `{"ok":true,"name":"bot"}` |
-| `use` | `{"ok":true,"name":"bot","item":"minecraft:iron_hoe","pos":[0,64,2],"result":"Success"}`, `item` is the main-hand item before the click, `result` the vanilla interaction result (`Success`, `Pass`, `Fail`, ...) |
+| Command     | Reply                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `spawn`     | `{"ok":true,"name":"bot","x":0,"y":64,"z":0}` (block coordinates)                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `remove`    | `{"ok":true,"name":"bot"}`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `as`        | `{"ok":true,"name":"bot","command":"help","success":true}`, `success` is false for an unknown command or one the bot may not run                                                                                                                                                                                                                                                                                                                                   |
+| `open`      | `{"ok":true,"name":"bot","block":"minecraft:chest"}`                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `close`     | `{"ok":true,"name":"bot"}`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `use`       | `{"ok":true,"name":"bot","item":"minecraft:iron_hoe","pos":[0,64,2],"result":"Success"}`, `item` is the main-hand item before the click, `result` the vanilla interaction result (`Success`, `Pass`, `Fail`, ...)                                                                                                                                                                                                                                                  |
 | `inventory` | `{"ok":true,"name":"bot","main_hand":{"id":"minecraft:iron_hoe","count":1,"damage":7,"item_model":"minecraft:iron_hoe"},"items":[{"slot":0,"id":"minecraft:iron_hoe","count":1,"damage":7,"item_model":"minecraft:iron_hoe"}]}`, `main_hand` is `null` for an empty hand, empty slots are left out, `damage` is 0 for an item that can't be damaged. Slots are numbered like Bukkit's `PlayerInventory`: 0-8 hotbar, 9-35 bag, 36-39 boots to helmet, 40 off hand. |
-| `block` | `{"ok":true,"pos":[0,64,0],"type":"minecraft:oak_stairs","state":{"facing":"east","half":"top","shape":"straight","waterlogged":"false"}}`, property values are vanilla's names as strings, `state` is `{}` for a block without properties |
-| `container` | `{"ok":true,"pos":[0,64,0],"block":"minecraft:chest","size":27,"items":[{"slot":4,"id":"minecraft:dirt","count":3,"damage":0,"item_model":"minecraft:dirt"}]}`, `items` holds the non-empty slots like `inventory` does, a block that is no container answers `no container at x y z`. |
+| `block`     | `{"ok":true,"pos":[0,64,0],"type":"minecraft:oak_stairs","state":{"facing":"east","half":"top","shape":"straight","waterlogged":"false"}}`, property values are vanilla's names as strings, `state` is `{}` for a block without properties                                                                                                                                                                                                                         |
+| `container` | `{"ok":true,"pos":[0,64,0],"block":"minecraft:chest","size":27,"items":[{"slot":4,"id":"minecraft:dirt","count":3,"damage":0,"item_model":"minecraft:dirt"}]}`, `items` holds the non-empty slots like `inventory` does, a block that is no container answers `no container at x y z`.                                                                                                                                                                             |
 
 A fake player is not op. `as` runs commands under the permissions it has.
 
@@ -123,6 +123,80 @@ the first test and fails the run if the server did not take it.
 
 The library compiles against JUnit and Gson without shipping them: declare both in the consuming build.
 
+### Consumer setup
+
+Every `v*` release carries three assets under one version:
+
+| Asset                                | Contents                                                          |
+|--------------------------------------|-------------------------------------------------------------------|
+| `testutils-<version>+<mc>-paper.jar` | the Paper plugin                                                  |
+| `testutils-library-<version>.jar`    | the test library                                                  |
+| `testutils-<version>.properties`     | the Paper pin: `minecraft_version`, `paper_build`, `paper_sha256` |
+
+The repo is public, so Gradle fetches them straight from the release download URL through an Ivy
+repository, with no credentials and no package registry. The project pins the TestUtils version and
+reads `minecraft_version` from its own `gradle.properties`. The Paper build and its hash come from the pin asset:
+
+```groovy
+repositories {
+    mavenCentral()
+    // Gradle sends the `+` in the plugin jar's name as is, and GitHub serves it.
+    ivy {
+        url = 'https://github.com/nothub/TestUtils/releases/download'
+        patternLayout { artifact 'v[revision]/[module]-[revision](+[classifier]).[ext]' }
+        metadataSources { artifact() }
+        content { includeGroup 'lol.hub' }
+    }
+}
+
+configurations {
+    testutilsPlugin
+    testutilsPin
+}
+
+def testutils = '0.2.0'
+dependencies {
+    testImplementation "lol.hub:testutils-library:${testutils}"
+    testImplementation platform('org.junit:junit-bom:6.1.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'com.google.code.gson:gson:2.14.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testutilsPlugin "lol.hub:testutils:${testutils}:${project.minecraft_version}-paper"
+    testutilsPin "lol.hub:testutils:${testutils}@properties"
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    dependsOn 'jar'
+    def pluginUnderTest = tasks.named('jar').flatMap { it.archiveFile }
+    def testutilsPlugin = configurations.testutilsPlugin
+    inputs.files(testutilsPlugin)
+    doFirst {
+        systemProperty 'testutils.pluginJar', pluginUnderTest.get().asFile.path
+        systemProperty 'testutils.testutilsJar', testutilsPlugin.singleFile.path
+        systemProperty 'testutils.paperJar', '<the pinned Paper jar, see below>'
+        systemProperty 'testutils.paperRepo', '<a directory for Paper\'s patched libraries>'
+    }
+}
+```
+
+The library reads the four system properties and downloads nothing itself. The last two values are yours to supply:
+
+- `testutils.pluginJar`: the plugin under test, the project's own jar task output.
+- `testutils.testutilsJar`: the TestUtils plugin jar of the same release.
+- `testutils.paperJar`: the Paper jar the pin asset names. In a task the test task depends on, read the pin
+  from `configurations.testutilsPin` and fail when its `minecraft_version` differs from the project's. Then
+  fetch the `server:default` download of
+  `https://fill.papermc.io/v3/projects/paper/versions/<minecraft_version>/builds/<paper_build>`
+  and check it against `paper_sha256`. The `paperJar` task in `library/build.gradle` does the same for
+  TestUtils' own tests. The test task resolves `testutilsPlugin` only after its dependencies ran. A release for
+  another MC version has no plugin jar under the project's classifier, so without the earlier check that
+  mismatch surfaces as a 404.
+- `testutils.paperRepo`: where Paper's launcher puts Mojang's jar and the libraries it patches. A directory
+  beside the cached Paper jar, outside `build/`, lets every run share them.
+
+Keep downloaded jars out of `build/dist`: a release glob over it would upload them.
+
 ### Example
 
 ```
@@ -138,10 +212,12 @@ tu remove bot
 
 Two subprojects, two jars:
 
-| Jar | Contents |
-|---|---|
-| `plugin/build/dist/testutils-<version>+<mc>-paper.jar` | the Paper plugin |
-| `library/build/dist/testutils-library-<version>.jar` | test-side library (JUnit and Gson are compile-only, consumers declare their own) |
+| Jar                                                    | Contents                                                                         |
+|--------------------------------------------------------|----------------------------------------------------------------------------------|
+| `plugin/build/dist/testutils-<version>+<mc>-paper.jar` | the Paper plugin                                                                 |
+| `library/build/dist/testutils-library-<version>.jar`   | test-side library (JUnit and Gson are compile-only, consumers declare their own) |
+
+Next to the plugin jar the build writes `testutils-<version>.properties`, the Paper pin from `gradle.properties`.
 
 ```
 ./gradlew check build         # builds both jars and verifies their names and the release globs
@@ -151,12 +227,12 @@ Two subprojects, two jars:
 `runServer` boots the same pinned, verified Paper jar the tests use, not run-paper's latest build.
 On every launch it rewrites these keys in `plugin/run/server.properties` and leaves the others alone:
 
-| Key | Value |
-|---|---|
-| `server-ip`, `server-port` | `127.0.0.1`, `25565` |
-| `online-mode`, `white-list`, `enforce-whitelist` | `false` |
-| `enable-rcon`, `rcon.port` | `true`, `25575` |
-| `rcon.password` | `testutils` |
+| Key                                              | Value                |
+|--------------------------------------------------|----------------------|
+| `server-ip`, `server-port`                       | `127.0.0.1`, `25565` |
+| `online-mode`, `white-list`, `enforce-whitelist` | `false`              |
+| `enable-rcon`, `rcon.port`                       | `true`, `25575`      |
+| `rcon.password`                                  | `testutils`          |
 
 A stock client joins at `localhost`. An agent sends console commands over RCON on `127.0.0.1:25575` and gets
 each command's output back. Loopback only, so the fixed password exposes nothing. A command that answers a tick
