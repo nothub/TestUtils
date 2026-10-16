@@ -10,7 +10,6 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.ReferenceCountUtil;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.PacketFlow;
-import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -24,7 +23,6 @@ import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.UUID;
 
 final class FakePlayer {
@@ -45,35 +43,23 @@ final class FakePlayer {
         new EmbeddedChannel(new ChannelInitializer<Channel>() {
             @Override
             protected void initChannel(Channel channel) {
-                // Closest to the sink, so every outbound packet gets dropped here
-                // instead of piling up in EmbeddedChannel's unbounded queue.
-                channel.pipeline().addFirst(new ChannelOutboundHandlerAdapter() {
+                Connection.configureInMemoryPipeline(channel.pipeline(), PacketFlow.SERVERBOUND);
+                connection.configurePacketHandler(channel.pipeline());
+                // Last in the pipeline, so outbound packets meet it before any encoder. The encoder
+                // has no protocol configured and throws, and Connection disconnects on that: a
+                // disconnected player counts as immobile, and vanilla closes its menus every tick.
+                // Dropping here also keeps packets out of EmbeddedChannel's unbounded queue.
+                channel.pipeline().addLast(new ChannelOutboundHandlerAdapter() {
                     @Override
                     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
                         ReferenceCountUtil.release(msg);
                         promise.trySuccess();
                     }
                 });
-                Connection.configureInMemoryPipeline(channel.pipeline(), PacketFlow.SERVERBOUND);
-                connection.configurePacketHandler(channel.pipeline());
             }
         });
 
         playerList().placeNewPlayer(connection, player, CommonListenerCookie.createInitial(profile, false));
-
-        // placeNewPlayer returns early when the connection isn't accepting
-        // messages, which the embedded channel never is. That skips the profile
-        // broadcast and the entity tracker registration, so finish both here.
-        if (player.suppressTrackerForLogin) {
-            player.suppressTrackerForLogin = false;
-            Player bukkit = player.getBukkitEntity();
-            var packet = ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(player));
-            for (Player online : Bukkit.getOnlinePlayers()) {
-                if (online.equals(bukkit) || !online.canSee(bukkit)) continue;
-                ((CraftPlayer) online).getHandle().connection.send(packet);
-            }
-            level.getChunkSource().addEntity(player);
-        }
 
         return player.getBukkitEntity();
     }

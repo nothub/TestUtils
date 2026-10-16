@@ -269,8 +269,9 @@ which also fails the build when boot plus teardown exceeds 30 s on a cache hit.
 
 ### Limits
 
-- Nothing ticks the fake player's connection, so it has no physics and no
-  per-tick player logic. It stands where it was placed until `tp` moves it.
+- Nothing ticks the fake player's connection, so it has no movement or
+  physics. It stands where it was placed until `tp` moves it. The world still
+  runs its player tick, so a container it opens stays open until `tu close`.
 - Spawning a fake player does not load the chunks around it in time for the
   next command (`That position is not loaded`). Load the area with
   `forceload add <x> <z>` before placing blocks.

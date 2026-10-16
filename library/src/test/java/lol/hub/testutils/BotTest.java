@@ -7,6 +7,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -124,6 +125,23 @@ class BotTest {
         bot.close();
         IllegalStateException e = assertThrows(IllegalStateException.class, () -> bot.open(area.at(7, 0, 7)));
         assertTrue(e.getMessage().contains("no container at"), e.getMessage());
+    }
+
+    // A barrel shows its viewers in its block state. A server closes a menu its player can't use on
+    // the player's next tick, so the window is longer than a few ticks.
+    @Test
+    void anOpenedContainerStaysOpenUntilClosed(TestServer server, Area area) {
+        Bot bot = area.bot();
+        BOT_NAMES.add(bot.name());
+        Pos barrel = area.at(6, 1, 6);
+        server.command("setblock " + barrel + " barrel");
+
+        bot.open(barrel);
+        Waiting.waitUntil(Duration.ofSeconds(5), () -> server.block(barrel).state().get("open"), "true"::equals);
+        Waiting.holdsFor(Duration.ofSeconds(1), () -> server.block(barrel).state().get("open"), "true"::equals);
+
+        bot.close();
+        Waiting.waitUntil(Duration.ofSeconds(5), () -> server.block(barrel).state().get("open"), "false"::equals);
     }
 
     @Test
