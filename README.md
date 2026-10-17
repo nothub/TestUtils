@@ -20,7 +20,7 @@ Alias `/tu`, permission `testutils.use` (op).
 
 | Command                                 | Effect                                                                                             |
 |-----------------------------------------|----------------------------------------------------------------------------------------------------|
-| `/tu spawn <name> [x y z]`              | Join a fake player, at world spawn by default.                                                     |
+| `/tu spawn <name> [x y z [dimension]]`  | Join a fake player, at world spawn by default.                                                     |
 | `/tu remove <name>`                     | Disconnect it.                                                                                     |
 | `/tu as <name> <command...>`            | Run a command as the fake player.                                                                  |
 | `/tu open <name> <x> <y> <z>`           | Open the container at that block. Fires `InventoryOpenEvent`.                                      |
@@ -35,8 +35,9 @@ Vanilla commands cover the rest, since the fake player is a real player:
 `data get entity <name> Inventory`. The `inventory`, `block` and `container` queries answer in JSON, so a test
 never has to parse the text those commands print.
 
-`block` and `container` read the overworld unless a dimension id follows the coordinates, such as
-`minecraft:the_nether`. A command run by a player reads that player's world instead.
+`spawn`, `block` and `container` act in the overworld unless a dimension id follows the coordinates, such as
+`minecraft:the_nether`. Without a dimension id, a command run by a player acts in that player's world.
+`spawn <name> <dimension>` without coordinates is a usage error.
 
 ### Replies
 
@@ -48,7 +49,7 @@ None of these log an error. An error reply holds exactly `ok` and `error`.
 
 | Command     | Reply                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 |-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `spawn`     | `{"ok":true,"name":"bot","x":0,"y":64,"z":0}` (block coordinates)                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `spawn`     | `{"ok":true,"name":"bot","x":0,"y":64,"z":0,"dimension":"minecraft:overworld"}` (block coordinates), `dimension` is the world the fake player is in after joining                                                                                                                                                                                                                                                                                                  |
 | `remove`    | `{"ok":true,"name":"bot"}`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `as`        | `{"ok":true,"name":"bot","command":"help","success":true}`, `success` is false for an unknown command or one the bot may not run                                                                                                                                                                                                                                                                                                                                   |
 | `open`      | `{"ok":true,"name":"bot","block":"minecraft:chest"}`                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -98,7 +99,8 @@ class SpawnTest {
   It is a force-loaded chunk with a stone floor, spaced far from every other area. `area.at(dx, dy, dz)`
   gives a `Pos`, where `dy` 0 is the floor and 1 the first air block; a `Pos` prints as `x y z` for commands.
   A `Pos` carries a dimension id; `new Pos(x, y, z)` is in the overworld, `new Pos(x, y, z, "minecraft:the_nether")` in the Nether.
-  `area.bot()` and `area.bot(pos)` spawn a `Bot` with a unique name from a run-wide counter. The area
+  `area.bot()` and `area.bot(pos)` spawn a `Bot` with a unique name from a run-wide counter, in the position's
+  dimension. A bot that ends up in another dimension is removed and the spawn throws. The area
   removes its bots when the test ends. An `Area` can't be injected into `@BeforeAll`.
 - `Bot` has `hold(item)`, `run(command)`, `use(pos)`, `open(pos)`, `close()`, `inventory()`, `remove()`. A call the server
   refuses throws, so tests never check a reply. `run` returns the command's success instead.

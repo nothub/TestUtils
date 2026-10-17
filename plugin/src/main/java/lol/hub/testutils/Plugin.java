@@ -33,7 +33,7 @@ public final class Plugin extends JavaPlugin {
     private static final Map<String, String> USAGE = new LinkedHashMap<>();
 
     static {
-        USAGE.put("spawn", "spawn <name> [x y z]");
+        USAGE.put("spawn", "spawn <name> [x y z [dimension]]");
         USAGE.put("remove", "remove <name>");
         USAGE.put("as", "as <name> <command...>");
         USAGE.put("open", "open <name> <x> <y> <z>");
@@ -81,7 +81,7 @@ public final class Plugin extends JavaPlugin {
             throw new CommandError("unknown action '" + args[0] + "', expected " + String.join("|", USAGE.keySet()));
         }
         switch (action) {
-            case "spawn" -> arity(action, args, 2, 5);
+            case "spawn" -> arity(action, args, 2, 5, 6);
             case "remove", "close", "inventory" -> arity(action, args, 2);
             case "open" -> arity(action, args, 5);
             case "block", "container" -> arity(action, args, 4, 5);
@@ -100,15 +100,17 @@ public final class Plugin extends JavaPlugin {
 
         if (action.equals("spawn")) {
             if (fakes.containsKey(name)) throw new CommandError(name + " already exists");
-            World world = worldOf(sender);
-            Location loc = args.length == 5
+            World world = args.length == 6 ? dimension(args[5]) : worldOf(sender);
+            Location loc = args.length >= 5
                     ? new Location(world, number(args[2]), number(args[3]), number(args[4]))
                     : world.getSpawnLocation();
             requireInside(loc);
-            fakes.put(name, FakePlayer.spawn(name, loc));
+            Player fake = FakePlayer.spawn(name, loc);
+            fakes.put(name, fake);
             reply.addProperty("x", loc.getBlockX());
             reply.addProperty("y", loc.getBlockY());
             reply.addProperty("z", loc.getBlockZ());
+            reply.addProperty("dimension", fake.getWorld().getKey().toString());
             return;
         }
 

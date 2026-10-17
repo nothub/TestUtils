@@ -18,7 +18,11 @@ public final class Bot {
 
     static Bot spawn(TestServer server, String name, Pos pos) {
         Bot bot = new Bot(server, name);
-        bot.tu("spawn " + name + " " + pos);
+        String dimension = bot.tu("spawn " + name + " " + pos + " " + pos.dimension()).get("dimension").getAsString();
+        if (!dimension.equals(pos.dimension())) {
+            bot.remove();
+            throw new IllegalStateException(name + " joined " + dimension + " instead of " + pos.dimension());
+        }
         return bot;
     }
 

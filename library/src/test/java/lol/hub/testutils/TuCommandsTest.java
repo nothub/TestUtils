@@ -26,10 +26,36 @@ class TuCommandsTest {
 
     @Test
     void spawnAndRemoveReply(TestServer server) {
-        assertEquals(json("{\"ok\":true,\"name\":\"spawner\",\"x\":1000,\"y\":64,\"z\":1000}"), server.tu("spawn spawner 1000 64 1000"));
+        assertEquals(json("{\"ok\":true,\"name\":\"spawner\",\"x\":1000,\"y\":64,\"z\":1000,\"dimension\":\"minecraft:overworld\"}"),
+                server.tu("spawn spawner 1000 64 1000"));
         assertError(server.tu("spawn spawner 1000 64 1000"), "spawner already exists");
         assertEquals(json("{\"ok\":true,\"name\":\"spawner\"}"), server.tu("remove spawner"));
         assertError(server.tu("remove spawner"), "no fake player named spawner");
+    }
+
+    @Test
+    void spawnJoinsTheGivenDimension(TestServer server) {
+        String nether = "execute in minecraft:the_nether run ";
+        server.command(nether + "forceload add 1090 1000");
+        server.command(nether + "fill 1089 63 999 1091 66 1001 stone");
+        server.command(nether + "fill 1090 64 1000 1090 65 1000 air");
+        try {
+            assertEquals(json("{\"ok\":true,\"name\":\"netherbot\",\"x\":1090,\"y\":64,\"z\":1000,\"dimension\":\"minecraft:the_nether\"}"),
+                    server.tu("spawn netherbot 1090 64 1000 minecraft:the_nether"));
+            // A selector with a position only matches in the dimension the command runs in.
+            assertEquals(new CheckResult(true, 1), CheckResult.parse(server.command("execute in minecraft:the_nether if entity @a[name=netherbot,x=1090,y=64,z=1000,distance=..2]")));
+        } finally {
+            server.tu("remove netherbot");
+            server.command(nether + "fill 1089 63 999 1091 66 1001 air");
+            server.command(nether + "forceload remove 1090 1000");
+        }
+    }
+
+    @Test
+    void spawnIntoAnUnknownOrMalformedDimensionLeavesNoBot(TestServer server) {
+        assertError(server.tu("spawn lost 1000 64 1000 minecraft:nowhere"), "unknown dimension minecraft:nowhere");
+        assertError(server.tu("spawn lost 1000 64 1000 Not:Valid"), "not a dimension id: Not:Valid");
+        assertError(server.tu("remove lost"), "no fake player named lost");
     }
 
     @Test
@@ -137,19 +163,20 @@ class TuCommandsTest {
     @Test
     void badArgumentsAnswerWithAnErrorAndLogNothing(TestServer server) throws IOException {
         server.tu("spawn badargs 1040 64 1000");
-        List<String> wrongShape = List.of("", "bogus badargs", "spawn", "spawn x 1", "spawn x 1 2", "spawn x 1 2 3 4", "spawn x a b c",
+        List<String> wrongShape = List.of("", "bogus badargs", "spawn", "spawn x 1", "spawn x 1 2", "spawn x a b c", "spawn x minecraft:the_nether",
+                "spawn x 1 2 3 minecraft:the_nether extra", "spawn x a b c minecraft:the_nether",
                 "remove", "close", "inventory", "inventory badargs extra", "as badargs", "open badargs", "open badargs a b c", "open badargs 1 2",
                 "use badargs 1 2", "use badargs a b c", "block", "block 1 2", "block a b c", "block 1 2 3 4 5", "block a b c minecraft:the_nether", "container", "container 1 2 3 4 5");
         List<String> outsideTheWorld = List.of("spawn out1 NaN 64 0", "spawn out2 Infinity 64 0", "spawn out3 1e400 64 0",
                 "spawn out4 0 64 1e10", "spawn out5 4000 100000 4000", "spawn out6 4000 -100000 4000",
                 "open badargs 2000000000 64 0", "use badargs 0 100000 0", "block 2000000000 64 0", "block 0 100000 0", "container 0 -100000 0",
-                "block 0 300 0 minecraft:the_nether", "container 2000000000 64 0 minecraft:the_end");
+                "block 0 300 0 minecraft:the_nether", "container 2000000000 64 0 minecraft:the_end", "spawn out7 0 300 0 minecraft:the_nether");
         List<String> unknown = List.of("open nobody 1 2 3", "use nobody 1 2 3", "as nobody help", "close nobody", "remove nobody",
-                "use badargs 1040 64 1000 sideways", "block 0 64 0 minecraft:nowhere", "block 0 64 0 Not:Valid", "container 0 64 0 :",
+                "use badargs 1040 64 1000 sideways", "spawn x 1 2 3 4", "spawn x 1 2 3 minecraft:nowhere", "spawn x 1 2 3 Not:Valid", "block 0 64 0 minecraft:nowhere", "block 0 64 0 Not:Valid", "container 0 64 0 :",
                 "container 0 64 0 minecraft:");
         for (String args : List.of(wrongShape, outsideTheWorld, unknown).stream().flatMap(List::stream).toList()) assertErrorShape(server, args);
 
-        for (String name : List.of("x", "out1", "out2", "out3", "out4", "out5", "out6")) {
+        for (String name : List.of("x", "out1", "out2", "out3", "out4", "out5", "out6", "out7")) {
             assertError(server.tu("remove " + name), "no fake player named " + name);
         }
         assertTrue(server.tu("remove badargs").get("ok").getAsBoolean(), "the bot survived the bad calls");

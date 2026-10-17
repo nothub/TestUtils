@@ -77,6 +77,25 @@ class BotTest {
     }
 
     @Test
+    void spawnsIntoThePositionsDimension(TestServer server) {
+        String nether = "execute in minecraft:the_nether run ";
+        server.command(nether + "forceload add 1100 1000");
+        server.command(nether + "fill 1099 63 999 1101 66 1001 stone");
+        server.command(nether + "fill 1100 64 1000 1100 65 1000 air");
+        Bot bot = null;
+        try {
+            bot = Bot.spawn(server, "tu" + server.nextBotNumber(), new Pos(1100, 64, 1000, "minecraft:the_nether"));
+            BOT_NAMES.add(bot.name());
+            assertEquals(new CheckResult(true, 1),
+                    CheckResult.parse(server.command("execute in minecraft:the_nether if entity @a[name=" + bot.name() + ",x=1100,y=64,z=1000,distance=..2]")));
+        } finally {
+            if (bot != null) bot.remove();
+            server.command(nether + "fill 1099 63 999 1101 66 1001 air");
+            server.command(nether + "forceload remove 1100 1000");
+        }
+    }
+
+    @Test
     void holdsAnItemAndRunsCommands(TestServer server, Area area) {
         Bot bot = area.bot();
         BOT_NAMES.add(bot.name());
