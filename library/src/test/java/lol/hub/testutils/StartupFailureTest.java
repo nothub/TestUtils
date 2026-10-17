@@ -40,6 +40,15 @@ class StartupFailureTest {
         }
     }
 
+    public static final class RejectsElement {
+        public static void main(String[] args) {
+            if (Boolean.getBoolean("paperclip.patchonly")) return;
+            System.out.println("[main/ERROR]: >> Errors in element tu:far:");
+            for (int i = 0; i < 50; i++) System.out.println("\tat net.minecraft.Frame" + i);
+            System.out.println("[main/WARN]: Failed to load datapacks, can't proceed with server load.");
+        }
+    }
+
     @TempDir
     Path temp;
 
@@ -66,6 +75,23 @@ class StartupFailureTest {
         IllegalStateException e = assertTimeoutPreemptively(Duration.ofSeconds(30), () -> startFailing(fakeServer(NeverReady.class), Duration.ofSeconds(3)));
         assertTrue(e.getMessage().contains("not ready after PT3S"), e.getMessage());
         assertTrue(e.getMessage().contains("Preparing level \"world\""), e.getMessage());
+    }
+
+    @Test
+    void anElementErrorAboveTheLastLinesIsKeptInTheFailure() throws IOException {
+        IllegalStateException e = assertTimeoutPreemptively(Duration.ofSeconds(30), () -> startFailing(fakeServer(RejectsElement.class), Duration.ofMinutes(5)));
+        assertTrue(e.getMessage().contains("Errors in element tu:far"), e.getMessage());
+        assertTrue(e.getMessage().contains("can't proceed with server load"), e.getMessage());
+    }
+
+    @Test
+    void aDeclarationTheServerRejectsFailsWithTheLineNamingIt() {
+        // Passes Declarations' checks, but the server's codec takes 0 to 15 only.
+        String declaration = "[{\"id\": \"tu:rejected\", \"base\": \"minecraft:overworld\", \"overrides\": {\"monster_spawn_block_light_limit\": 99}}]";
+        Path paperRepo = Path.of(System.getProperty("testutils.paperRepo"));
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> TestServer.start(PortSource.LOOPBACK, temp.resolve("log/server.log"), paperRepo, declaration));
+        assertTrue(e.getMessage().contains("exited early"), e.getMessage());
+        assertTrue(e.getMessage().contains("Errors in element tu:rejected"), e.getMessage());
     }
 
     private Path fakeServer(Class<?> main) throws IOException {

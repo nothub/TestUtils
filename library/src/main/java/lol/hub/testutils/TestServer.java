@@ -34,6 +34,7 @@ public final class TestServer implements AutoCloseable {
     // A cold start downloads and patches the vanilla jar first.
     private static final Duration READY_TIMEOUT = Duration.ofMinutes(5);
     private static final int EXCERPT_LINES = 40;
+    private static final String ELEMENT_ERROR = "Errors in element ";
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(60);
     private static final Duration MARKER_TIMEOUT = Duration.ofSeconds(30);
     // Relative to the test JVM's working directory, which Gradle sets to the project directory.
@@ -451,12 +452,19 @@ public final class TestServer implements AutoCloseable {
         throw new IllegalStateException("server not ready after " + timeout + "." + excerpt(log));
     }
 
-    /** The reason a boot failed is in the last lines of the log, so the failure carries them instead of a path to look up. */
+    /**
+     * The reason a boot failed is in the last lines of the log, plus any line naming a rejected datapack element above them,
+     * so the failure carries them instead of a path to look up.
+     */
     private static String excerpt(Path log) throws IOException {
         // Decoded leniently: a crashing server can write bytes that are no valid UTF-8.
         List<String> lines = Files.exists(log) ? new String(Files.readAllBytes(log), java.nio.charset.StandardCharsets.UTF_8).lines().toList() : List.of();
-        List<String> tail = lines.subList(Math.max(0, lines.size() - EXCERPT_LINES), lines.size());
-        return " Last " + tail.size() + " lines of " + log + ":\n" + String.join("\n", tail);
+        int tailStart = Math.max(0, lines.size() - EXCERPT_LINES);
+        List<String> tail = lines.subList(tailStart, lines.size());
+        // A datapack the server rejects names the bad element above the stack traces that fill the tail.
+        List<String> elementErrors = lines.subList(0, tailStart).stream().filter(line -> line.contains(ELEMENT_ERROR)).toList();
+        String errors = elementErrors.isEmpty() ? "" : "Earlier in the log:\n" + String.join("\n", elementErrors) + "\n";
+        return " " + errors + "Last " + tail.size() + " lines of " + log + ":\n" + String.join("\n", tail);
     }
 
     private static Rcon connect(int port, String password) throws IOException {

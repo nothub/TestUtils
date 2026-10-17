@@ -175,6 +175,8 @@ is shared by the whole run, so the declared set is fixed per run.
 A bad declaration fails the run before any server starts, naming the entry, where there is one, and its
 problem. Among the problems: no valid JSON, an unknown key, an invalid or `minecraft:` id, a duplicate id,
 an unknown base, or a `min_y` and `height` that can't hold the grass and 32 blocks of air above it.
+An override value the server rejects, such as a light limit of 99, stops the server within seconds. The run
+fails with the server's `Errors in element <id>` line and the end of its log.
 
 ### Consumer setup
 
