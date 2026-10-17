@@ -106,6 +106,13 @@ class SpawnTest {
   `area.bot()` and `area.bot(pos)` spawn a `Bot` with a unique name from a run-wide counter, in the position's
   dimension. A bot that ends up in another dimension is removed and the spawn throws. The area
   removes its bots when the test ends. An `Area` can't be injected into `@BeforeAll`.
+- `server.area(dimension)` gives an area in the dimension with that id, such as `minecraft:the_nether`. Its
+  `at` returns positions in that dimension and its bots spawn there. `area.command(line)` and
+  `area.check(condition)` work like the server's `command` and `check`, run in that dimension.
+  In the Nether and the End the area is a sealed box: barrier walls around the chunk, a barrier ceiling at `dy` 33
+  above 32 air blocks, and no entity inside but players. Their terrain, lava and mobs stay out. Barriers let
+  light through, so block light from lava or glowing blocks outside the walls reaches inside. Building it force-loads the 8 neighbouring chunks for the walls and releases them afterwards, so
+  only the area's own chunk stays force-loaded. Areas in every other dimension are open, like the overworld's.
 - `Bot` has `hold(item)`, `run(command)`, `use(pos)`, `open(pos)`, `close()`, `inventory()`, `remove()`. A call the server
   refuses throws, so tests never check a reply. `run` returns the command's success instead.
   `inventory()` returns an `Inventory(Map<Integer, Item> slots, Item mainHand)` of `Item(id, count, damage, itemModel)`;

@@ -227,13 +227,19 @@ public final class TestServer implements AutoCloseable {
      * and throws on any reply that is not a test result: a typo, an unknown block, an unloaded position.
      */
     public CheckResult check(String condition) {
+        return check("", condition);
+    }
+
+    /** {@code subcommands} go between {@code execute} and the condition, such as {@code "in minecraft:the_nether "}. */
+    CheckResult check(String subcommands, String condition) {
         if (!condition.startsWith("if ") && !condition.startsWith("unless ")) {
             throw new IllegalArgumentException("a check starts with 'if' or 'unless': " + condition);
         }
+        String line = "execute " + subcommands + condition;
         try {
-            return CheckResult.parse(command("execute " + condition));
+            return CheckResult.parse(command(line));
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("execute " + condition + " answered with " + e.getMessage(), e);
+            throw new IllegalArgumentException(line + " answered with " + e.getMessage(), e);
         }
     }
 
@@ -264,9 +270,14 @@ public final class TestServer implements AutoCloseable {
         return reply;
     }
 
-    /** A fresh {@link Area} no other test has used. Close it to remove its bots. */
+    /** A fresh overworld {@link Area} no other test has used. Close it to remove its bots. */
     public Area area() {
-        return new Area(this, nextAreaIndex.getAndIncrement());
+        return area(Pos.OVERWORLD);
+    }
+
+    /** A fresh {@link Area} in the dimension with that id, like {@code minecraft:the_nether}. Close it to remove its bots. */
+    public Area area(String dimension) {
+        return new Area(this, nextAreaIndex.getAndIncrement(), dimension);
     }
 
     int nextBotNumber() {
