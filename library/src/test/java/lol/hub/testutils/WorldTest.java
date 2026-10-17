@@ -23,6 +23,17 @@ class WorldTest {
     }
 
     @Test
+    void rulesHoldInTheNetherAndTheEnd(TestServer server) {
+        for (String dimension : new String[]{"minecraft:the_nether", "minecraft:the_end"}) {
+            String in = "execute in " + dimension + " run ";
+            assertEquals("Game rule random_tick_speed is currently set to 0", server.command(in + "gamerule random_tick_speed"), dimension);
+            assertEquals("Game rule advance_time is currently set to false", server.command(in + "gamerule advance_time"), dimension);
+            assertEquals("Game rule spawn_mobs is currently set to false", server.command(in + "gamerule spawn_mobs"), dimension);
+            assertEquals("The difficulty is Peaceful", server.command(in + "difficulty"), dimension);
+        }
+    }
+
+    @Test
     void timeStandsStill(TestServer server) {
         holdsFor(Duration.ofSeconds(2), () -> server.command("time query day"), NOON::equals);
     }
@@ -42,9 +53,9 @@ class WorldTest {
             String region = chunkX + " -64 " + chunkZ + " " + (chunkX + 15) + " 63 " + (chunkZ + 15);
             assertEquals("No blocks were filled", server.command("fill " + region + " air replace water"));
             assertEquals("No blocks were filled", server.command("fill " + region + " air replace lava"));
+            // Spawning is off, but chunk generation can still place animals. A bare @e would also see the other dimensions.
+            assertEquals(new CheckResult(false, 0), server.check("if entity @e[type=!minecraft:player,x=" + chunkX + ",y=-64,z=" + chunkZ + ",dx=15,dy=383,dz=15]"));
         }
-        // Spawning is off, but chunk generation can still place animals.
-        assertEquals(new CheckResult(false, 0), server.check("if entity @e[type=!minecraft:player]"));
     }
 
     private static void assertBlock(TestServer server, int x, int y, int z, String block) {

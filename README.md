@@ -116,10 +116,12 @@ class SpawnTest {
 - The test server also turns Paper's update checker off. Offline it logs three ERROR lines at boot, and it
   is a network call a test has no use for.
 
-The test server runs a flat world: bedrock at y=-64, dirt up to y=62, grass at y=63, air from y=64.
-It has no fluids, structures or animals. Random ticks, mob spawning and the day cycle are off, the
-time is fixed at 6000 and the difficulty is peaceful. The library reads each setting back before
-the first test and fails the run if the server did not take it.
+The test server's overworld is flat: bedrock at y=-64, dirt up to y=62, grass at y=63, air from y=64.
+It has no fluids, structures or animals. In the overworld, the Nether and the End, random ticks,
+mob spawning and the day cycle are off and the difficulty is peaceful. The overworld's time is fixed
+at 6000. The Nether has no clock and the End's clock has no day, so their time is left as it is.
+The library reads each setting back before the first test and fails the run if the server did not
+take it.
 
 The library compiles against JUnit and Gson without shipping them: declare both in the consuming build.
 

@@ -49,13 +49,17 @@ public final class TestServer implements AutoCloseable {
         }
     }
 
-    // advance_time goes before the time, so the clock cannot move on after it was set.
+    // Game rules, difficulty and time are per dimension.
     private static final List<WorldSetting> WORLD_SETTINGS = List.of(
             WorldSetting.gamerule("random_tick_speed", "0"),
             WorldSetting.gamerule("advance_time", "false"),
             WorldSetting.gamerule("spawn_mobs", "false"),
-            new WorldSetting("difficulty peaceful", "difficulty", "The difficulty is Peaceful"),
-            new WorldSetting("time set 6000", "time query day", "Timeline minecraft:day is at 6000 tick(s)"));
+            new WorldSetting("difficulty peaceful", "difficulty", "The difficulty is Peaceful"));
+    private static final WorldSetting TIME = new WorldSetting("time set 6000", "time query day", "Timeline minecraft:day is at 6000 tick(s)");
+    // How the Nether (no clock) and the End (its own clock) answer the time query. Any other reply goes on to set the time,
+    // so a reworded reply fails the read-back instead of skipping the time everywhere.
+    private static final List<String> NO_DAY_REPLIES = List.of("There is no default clock in dimension ", "Timeline minecraft:day is not valid for clock ");
+    private static final List<String> VANILLA_DIMENSIONS = List.of("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end");
 
     /** The server could not bind a port we picked for it, because another process took it first. */
     private static final class PortInUse extends Exception {
@@ -104,7 +108,7 @@ public final class TestServer implements AutoCloseable {
         ServerRegistry registry = ServerRegistry.at(paperRepo);
         registry.reapOrphans();
         boolean cold = PaperRepo.patch(paperJar, paperRepo, List.of());
-        Launch launch = new Launch(logCopy, paperJar, paperRepo, registry, readyTimeout);
+        Launch launch = new Launch(logCopy, paperJar, paperRepo, registry, readyTimeout, VANILLA_DIMENSIONS);
         for (int attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
             try {
                 return boot(ports.next(), ports.next(), launch, begin, cold);
@@ -116,7 +120,7 @@ public final class TestServer implements AutoCloseable {
     }
 
     /** What one start needs besides its ports. */
-    private record Launch(Path logCopy, Path paperJar, Path paperRepo, ServerRegistry registry, Duration readyTimeout) {
+    private record Launch(Path logCopy, Path paperJar, Path paperRepo, ServerRegistry registry, Duration readyTimeout, List<String> dimensions) {
     }
 
     private static TestServer boot(int gamePort, int rconPort, Launch launch, long begin, boolean cold) throws IOException, PortInUse {
@@ -171,7 +175,7 @@ public final class TestServer implements AutoCloseable {
             awaitReady(process, dir.resolve("server.log"), rconPort, launch.readyTimeout());
             Rcon rcon = connect(rconPort, rconPassword);
             try {
-                setUpWorld(rcon);
+                setUpWorld(rcon, launch.dimensions());
             } catch (IOException | RuntimeException e) {
                 rcon.close();
                 throw e;
@@ -322,14 +326,22 @@ public final class TestServer implements AutoCloseable {
     }
 
     /** A rule that was renamed in a new MC version fails here, with the reply, instead of silently doing nothing. */
-    private static void setUpWorld(Rcon rcon) throws IOException {
-        for (WorldSetting setting : WORLD_SETTINGS) {
-            String setReply = rcon.command(setting.set()).strip();
-            String reply = rcon.command(setting.query()).strip();
-            if (!reply.equals(setting.expected())) {
-                throw new IllegalStateException("'" + setting.set() + "' answered '" + setReply + "' and did not take: '"
-                        + setting.query() + "' answered '" + reply + "', expected '" + setting.expected() + "'");
-            }
+    private static void setUpWorld(Rcon rcon, List<String> dimensions) throws IOException {
+        for (String dimension : dimensions) {
+            String in = "execute in " + dimension + " run ";
+            // advance_time is among the settings, so a clock cannot move on after it was set.
+            for (WorldSetting setting : WORLD_SETTINGS) apply(rcon, in, setting);
+            String time = rcon.command(in + TIME.query()).strip();
+            if (NO_DAY_REPLIES.stream().noneMatch(time::startsWith)) apply(rcon, in, TIME);
+        }
+    }
+
+    private static void apply(Rcon rcon, String in, WorldSetting setting) throws IOException {
+        String setReply = rcon.command(in + setting.set()).strip();
+        String reply = rcon.command(in + setting.query()).strip();
+        if (!reply.equals(setting.expected())) {
+            throw new IllegalStateException("'" + in + setting.set() + "' answered '" + setReply + "' and did not take: '"
+                    + in + setting.query() + "' answered '" + reply + "', expected '" + setting.expected() + "'");
         }
     }
 
