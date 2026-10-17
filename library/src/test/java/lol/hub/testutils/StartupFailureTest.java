@@ -44,7 +44,7 @@ class StartupFailureTest {
     Path temp;
 
     private IllegalStateException startFailing(Path jar, Duration readyTimeout) {
-        return assertThrows(IllegalStateException.class, () -> TestServer.start(PortSource.LOOPBACK, temp.resolve("log/server.log"), jar, temp.resolve("repo"), readyTimeout));
+        return assertThrows(IllegalStateException.class, () -> TestServer.start(PortSource.LOOPBACK, temp.resolve("log/server.log"), jar, temp.resolve("repo"), null, readyTimeout));
     }
 
     @Test

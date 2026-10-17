@@ -139,13 +139,42 @@ class SpawnTest {
   is a network call a test has no use for.
 
 The test server's overworld is flat: bedrock at y=-64, dirt up to y=62, grass at y=63, air from y=64.
-It has no fluids, structures or animals. In the overworld, the Nether and the End, random ticks,
-mob spawning and the day cycle are off and the difficulty is peaceful. The overworld's time is fixed
-at 6000. The Nether has no clock and the End's clock has no day, so their time is left as it is.
+It has no fluids, structures or animals. In the overworld, the Nether, the End and every declared
+dimension, random ticks, mob spawning and the day cycle are off and the difficulty is peaceful. Time is
+fixed at 6000 in the overworld and in dimensions declared on its type. The Nether has no clock and the
+End's clock has no day, so their time, and that of dimensions declared on their types, is left as it is.
 The library reads each setting back before the first test and fails the run if the server did not
 take it.
 
 The library compiles against JUnit and Gson without shipping them: declare both in the consuming build.
+
+#### Declared dimensions
+
+A test run gets extra dimensions from `testutils-dimensions.json` at the root of the test classpath
+(`src/test/resources`). It is an array of entries:
+
+```json
+[
+  {"id": "tu:dim", "base": "minecraft:overworld", "overrides": {"monster_spawn_block_light_limit": 5}},
+  {"id": "tu:end", "base": "minecraft:the_end"}
+]
+```
+
+- `id`: the dimension's id, a resource location outside the `minecraft` namespace. Each id appears once.
+- `base`: the vanilla dimension type it starts from, such as `minecraft:the_nether`. Its JSON comes from the
+  pinned Paper build, so a declaration needs no change when the MC version moves.
+- `overrides` (optional): top-level fields of the dimension type to replace or add. The server decides what
+  it accepts, and it ignores a key it doesn't know, so a typo there shows only as a value that doesn't change.
+
+Every declared dimension has the overworld's flat ground, with the grass at y=63 whatever the type's
+`min_y`. Its type has no dragon fight unless the overrides set `has_ender_dragon_fight`. The library writes
+the declarations as one datapack, `file/testutils`, into the world before the server boots, and checks
+after boot that every declared dimension loaded. Without the resource no datapack is written. The server
+is shared by the whole run, so the declared set is fixed per run.
+
+A bad declaration fails the run before any server starts, naming the entry, where there is one, and its
+problem. Among the problems: no valid JSON, an unknown key, an invalid or `minecraft:` id, a duplicate id,
+an unknown base, or a `min_y` and `height` that can't hold the grass and 32 blocks of air above it.
 
 ### Consumer setup
 

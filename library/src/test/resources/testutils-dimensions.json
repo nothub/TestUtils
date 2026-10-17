@@ -1,0 +1,4 @@
+[
+  {"id": "tu:dim", "base": "minecraft:overworld", "overrides": {"monster_spawn_block_light_limit": 5}},
+  {"id": "tu:end", "base": "minecraft:the_end"}
+]

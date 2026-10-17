@@ -23,14 +23,19 @@ class WorldTest {
     }
 
     @Test
-    void rulesHoldInTheNetherAndTheEnd(TestServer server) {
-        for (String dimension : new String[]{"minecraft:the_nether", "minecraft:the_end"}) {
+    void rulesHoldInTheNetherTheEndAndDeclaredDimensions(TestServer server) {
+        for (String dimension : new String[]{"minecraft:the_nether", "minecraft:the_end", "tu:dim", "tu:end"}) {
             String in = "execute in " + dimension + " run ";
             assertEquals("Game rule random_tick_speed is currently set to 0", server.command(in + "gamerule random_tick_speed"), dimension);
             assertEquals("Game rule advance_time is currently set to false", server.command(in + "gamerule advance_time"), dimension);
             assertEquals("Game rule spawn_mobs is currently set to false", server.command(in + "gamerule spawn_mobs"), dimension);
             assertEquals("The difficulty is Peaceful", server.command(in + "difficulty"), dimension);
         }
+    }
+
+    @Test
+    void timeIsSetInADeclaredOverworldDimension(TestServer server) {
+        assertEquals(NOON, server.command("execute in tu:dim run time query day"));
     }
 
     @Test

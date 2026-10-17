@@ -33,6 +33,9 @@ final class Declarations {
     private static final Set<String> ENTRY_KEYS = Set.of("id", "base", "overrides");
     private static final String PACK = "testutils";
 
+    /** No declaration: no extra dimensions, no datapack. */
+    static final Declarations NONE = new Declarations(List.of(), Map.of());
+
     private final List<String> ids;
     // Path inside the pack, and its content.
     private final Map<String, String> files;

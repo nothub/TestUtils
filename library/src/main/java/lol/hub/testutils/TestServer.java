@@ -6,12 +6,15 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
@@ -35,6 +38,8 @@ public final class TestServer implements AutoCloseable {
     private static final Duration MARKER_TIMEOUT = Duration.ofSeconds(30);
     // Relative to the test JVM's working directory, which Gradle sets to the project directory.
     static final Path LOG_COPY = Path.of("build", "testutils", "server.log");
+    /** The consumer's dimension declaration, at the root of the test classpath. */
+    private static final String DECLARATION_RESOURCE = "testutils-dimensions.json";
 
     /** Block y of the grass on top of every flat dimension, and of an area's floor, which replaces it. */
     static final int SURFACE_Y = 63;
@@ -92,8 +97,13 @@ public final class TestServer implements AutoCloseable {
         this.watcher = watcher;
     }
 
+    /** The extension's start, with the dimensions of the declaration resource if the test classpath has one. */
     static TestServer start() throws IOException {
-        return start(PortSource.LOOPBACK, LOG_COPY);
+        String declaration;
+        try (InputStream in = TestServer.class.getClassLoader().getResourceAsStream(DECLARATION_RESOURCE)) {
+            declaration = in == null ? null : new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        return start(PortSource.LOOPBACK, LOG_COPY, Path.of(property("testutils.paperRepo")), declaration);
     }
 
     static TestServer start(PortSource ports, Path logCopy) throws IOException {
@@ -102,15 +112,24 @@ public final class TestServer implements AutoCloseable {
 
     /** Boots again on new ports when a bind fails, which happens when parallel runs pick the same port. */
     static TestServer start(PortSource ports, Path logCopy, Path paperRepo) throws IOException {
-        return start(ports, logCopy, Path.of(property("testutils.paperJar")), paperRepo, READY_TIMEOUT);
+        return start(ports, logCopy, paperRepo, null);
     }
 
-    static TestServer start(PortSource ports, Path logCopy, Path paperJar, Path paperRepo, Duration readyTimeout) throws IOException {
+    /** {@code declaration} is the JSON a declaration resource holds, or null for none. */
+    static TestServer start(PortSource ports, Path logCopy, Path paperRepo, String declaration) throws IOException {
+        return start(ports, logCopy, Path.of(property("testutils.paperJar")), paperRepo, declaration, READY_TIMEOUT);
+    }
+
+    static TestServer start(PortSource ports, Path logCopy, Path paperJar, Path paperRepo, String declaration, Duration readyTimeout) throws IOException {
         long begin = System.nanoTime();
         ServerRegistry registry = ServerRegistry.at(paperRepo);
         registry.reapOrphans();
         boolean cold = PaperRepo.patch(paperJar, paperRepo, List.of());
-        Launch launch = new Launch(logCopy, paperJar, paperRepo, registry, readyTimeout, VANILLA_DIMENSIONS);
+        // Before the first boot attempt, so a bad declaration starts no server.
+        Declarations declarations = declaration == null ? Declarations.NONE : Declarations.load(declaration, paperJar, paperRepo);
+        List<String> dimensions = new ArrayList<>(VANILLA_DIMENSIONS);
+        dimensions.addAll(declarations.ids());
+        Launch launch = new Launch(logCopy, paperJar, paperRepo, registry, readyTimeout, declarations, List.copyOf(dimensions));
         for (int attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
             try {
                 return boot(ports.next(), ports.next(), launch, begin, cold);
@@ -122,7 +141,8 @@ public final class TestServer implements AutoCloseable {
     }
 
     /** What one start needs besides its ports. */
-    private record Launch(Path logCopy, Path paperJar, Path paperRepo, ServerRegistry registry, Duration readyTimeout, List<String> dimensions) {
+    private record Launch(Path logCopy, Path paperJar, Path paperRepo, ServerRegistry registry, Duration readyTimeout, Declarations declarations,
+                          List<String> dimensions) {
     }
 
     private static TestServer boot(int gamePort, int rconPort, Launch launch, long begin, boolean cold) throws IOException, PortInUse {
@@ -157,6 +177,7 @@ public final class TestServer implements AutoCloseable {
                 "level-type=minecraft:flat",
                 "generator-settings=" + flatWorld(OVERWORLD_MIN_Y),
                 ""));
+        launch.declarations().write(dir.resolve("world"));
 
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         String runMarker = ServerRegistry.newMarker();
@@ -177,6 +198,7 @@ public final class TestServer implements AutoCloseable {
             awaitReady(process, dir.resolve("server.log"), rconPort, launch.readyTimeout());
             Rcon rcon = connect(rconPort, rconPassword);
             try {
+                requireLoaded(rcon, launch.declarations().ids(), dir.resolve("server.log"));
                 setUpWorld(rcon, launch.dimensions());
             } catch (IOException | RuntimeException e) {
                 rcon.close();
@@ -243,11 +265,14 @@ public final class TestServer implements AutoCloseable {
      * not thrown, so tests can assert on errors.
      */
     public JsonObject tu(String args) {
-        String reply = command(("tu " + args).stripTrailing()).strip();
+        return tuReply(args, command(("tu " + args).stripTrailing()));
+    }
+
+    private static JsonObject tuReply(String args, String reply) {
         try {
-            return JsonParser.parseString(reply).getAsJsonObject();
+            return JsonParser.parseString(reply.strip()).getAsJsonObject();
         } catch (JsonParseException | IllegalStateException e) {
-            throw new IllegalStateException("tu " + args + " did not answer with one JSON object: " + reply, e);
+            throw new IllegalStateException("tu " + args + " did not answer with one JSON object: " + reply.strip(), e);
         }
     }
 
@@ -374,6 +399,16 @@ public final class TestServer implements AutoCloseable {
     private static void deleteTree(Path dir) throws IOException {
         try (Stream<Path> files = Files.walk(dir)) {
             for (Path p : (Iterable<Path>) files.sorted(Comparator.reverseOrder())::iterator) Files.delete(p);
+        }
+    }
+
+    /** A pack the server skips, such as one of a format it doesn't support, leaves its dimensions out without failing the boot. */
+    private static void requireLoaded(Rcon rcon, List<String> declared, Path log) throws IOException {
+        for (String id : declared) {
+            JsonObject reply = tuReply("dimension " + id, rcon.command("tu dimension " + id));
+            if (!reply.get("ok").getAsBoolean()) {
+                throw new IllegalStateException("declared dimension " + id + " did not load, tu dimension answered " + reply + "." + excerpt(log));
+            }
         }
     }
 
