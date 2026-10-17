@@ -18,29 +18,32 @@ server console.
 
 Alias `/tu`, permission `testutils.use` (op).
 
-| Command                             | Effect                                                                                             |
-|-------------------------------------|----------------------------------------------------------------------------------------------------|
-| `/tu spawn <name> [x y z]`          | Join a fake player, at world spawn by default.                                                     |
-| `/tu remove <name>`                 | Disconnect it.                                                                                     |
-| `/tu as <name> <command...>`        | Run a command as the fake player.                                                                  |
-| `/tu open <name> <x> <y> <z>`       | Open the container at that block. Fires `InventoryOpenEvent`.                                      |
-| `/tu close <name>`                  | Close its open inventory view. Fires `InventoryCloseEvent`.                                        |
-| `/tu use <name> <x> <y> <z> [face]` | Right-click the block with the main-hand item. Fires `PlayerInteractEvent`. Face defaults to `up`. |
-| `/tu inventory <name>`              | Report what it carries: every non-empty slot and the main-hand item.                               |
-| `/tu block <x> <y> <z>`             | Report the block's type and state properties. Needs no fake player.                                |
-| `/tu container <x> <y> <z>`         | Report the slots of the container block there. Needs no fake player.                               |
+| Command                                 | Effect                                                                                             |
+|-----------------------------------------|----------------------------------------------------------------------------------------------------|
+| `/tu spawn <name> [x y z]`              | Join a fake player, at world spawn by default.                                                     |
+| `/tu remove <name>`                     | Disconnect it.                                                                                     |
+| `/tu as <name> <command...>`            | Run a command as the fake player.                                                                  |
+| `/tu open <name> <x> <y> <z>`           | Open the container at that block. Fires `InventoryOpenEvent`.                                      |
+| `/tu close <name>`                      | Close its open inventory view. Fires `InventoryCloseEvent`.                                        |
+| `/tu use <name> <x> <y> <z> [face]`     | Right-click the block with the main-hand item. Fires `PlayerInteractEvent`. Face defaults to `up`. |
+| `/tu inventory <name>`                  | Report what it carries: every non-empty slot and the main-hand item.                               |
+| `/tu block <x> <y> <z> [dimension]`     | Report the block's type and state properties. Needs no fake player.                                |
+| `/tu container <x> <y> <z> [dimension]` | Report the slots of the container block there. Needs no fake player.                               |
 
 Vanilla commands cover the rest, since the fake player is a real player:
 `tp`, `give`, `clear`, `item replace entity <name> weapon.mainhand with ...`,
 `data get entity <name> Inventory`. The `inventory`, `block` and `container` queries answer in JSON, so a test
 never has to parse the text those commands print.
 
+`block` and `container` read the overworld unless a dimension id follows the coordinates, such as
+`minecraft:the_nether`. A command run by a player reads that player's world instead.
+
 ### Replies
 
 Every `tu` command answers with one line of JSON. Success carries `"ok": true`
 plus the fields below. Anything the caller can fix answers `{"ok":false,"error":"..."}`:
 an unknown action, missing or non-numeric arguments, coordinates outside the world border or height
-limits, an unknown face, a name that is taken or unknown, a block that is no container.
+limits, an unknown face, an unknown or malformed dimension id, a name that is taken or unknown, a block that is no container.
 None of these log an error. An error reply holds exactly `ok` and `error`.
 
 | Command     | Reply                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -81,7 +84,8 @@ class SpawnTest {
   `Test failed. Count: N` carry their count. Any other reply (typo, unknown block,
   unloaded position) throws with the reply text.
 - `block(pos)` returns a `Block(type, state)` and `container(pos)` a `Container(block, size, slots)`, both typed
-  from the JSON replies. `container` throws for a block that is no container. Neither loads anything from text.
+  from the JSON replies. Both read the position's dimension. `container` throws for a block that is no container. Neither
+  loads anything from text.
 - `command(line)` runs any console command and returns everything it wrote back.
 - `Waiting.waitUntil(timeout, query, holds)` re-runs the query (any `Supplier`, such as
   `() -> server.check("if ...")`) about every 50 ms until `holds` accepts its value, and returns that value.
@@ -93,6 +97,7 @@ class SpawnTest {
 - `server.area()` / an injected `Area` parameter: one area per test invocation (each parameterized case too).
   It is a force-loaded chunk with a stone floor, spaced far from every other area. `area.at(dx, dy, dz)`
   gives a `Pos`, where `dy` 0 is the floor and 1 the first air block; a `Pos` prints as `x y z` for commands.
+  A `Pos` carries a dimension id; `new Pos(x, y, z)` is in the overworld, `new Pos(x, y, z, "minecraft:the_nether")` in the Nether.
   `area.bot()` and `area.bot(pos)` spawn a `Bot` with a unique name from a run-wide counter. The area
   removes its bots when the test ends. An `Area` can't be injected into `@BeforeAll`.
 - `Bot` has `hold(item)`, `run(command)`, `use(pos)`, `open(pos)`, `close()`, `inventory()`, `remove()`. A call the server

@@ -46,6 +46,24 @@ class ServerTest {
     }
 
     @Test
+    void queriesFollowThePositionsDimension(TestServer server) {
+        Pos stairs = new Pos(1100, 64, 1000, "minecraft:the_nether");
+        Pos chest = new Pos(1102, 64, 1000, "minecraft:the_nether");
+        assertEquals("1100 64 1000", stairs.toString());
+        assertEquals("minecraft:overworld", new Pos(1100, 64, 1000).dimension());
+        String nether = "execute in minecraft:the_nether run ";
+        server.command(nether + "forceload add 1100 1000");
+        server.command(nether + "setblock " + stairs + " minecraft:oak_stairs[facing=east,half=top,shape=straight,waterlogged=false]");
+        server.command(nether + "setblock " + chest + " chest{Items:[{Slot:4b,id:\"minecraft:dirt\",count:3}]}");
+        server.command("forceload add 1100 1000");
+        server.command("setblock 1100 64 1000 stone");
+
+        assertEquals(new Block("minecraft:oak_stairs", Map.of("facing", "east", "half", "top", "shape", "straight", "waterlogged", "false")), server.block(stairs));
+        assertEquals(new Container("minecraft:chest", 27, Map.of(4, new Item("minecraft:dirt", 3, 0, "minecraft:dirt"))), server.container(chest));
+        assertEquals(new Block("minecraft:stone", Map.of()), server.block(new Pos(1100, 64, 1000)));
+    }
+
+    @Test
     void startupLogHasNoErrors(TestServer server) throws IOException {
         List<String> bad = ServerLog.errors(server);
         assertTrue(bad.isEmpty(), () -> "server log has errors:\n" + String.join("\n", bad));

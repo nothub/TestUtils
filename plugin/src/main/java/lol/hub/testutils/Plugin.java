@@ -11,6 +11,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.block.Container;
 import org.bukkit.command.Command;
@@ -39,8 +40,8 @@ public final class Plugin extends JavaPlugin {
         USAGE.put("close", "close <name>");
         USAGE.put("use", "use <name> <x> <y> <z> [face]");
         USAGE.put("inventory", "inventory <name>");
-        USAGE.put("block", "block <x> <y> <z>");
-        USAGE.put("container", "container <x> <y> <z>");
+        USAGE.put("block", "block <x> <y> <z> [dimension]");
+        USAGE.put("container", "container <x> <y> <z> [dimension]");
     }
 
     /** A reply the caller can fix: it goes out as {"ok":false,"error":...}, not as an exception. */
@@ -83,7 +84,7 @@ public final class Plugin extends JavaPlugin {
             case "spawn" -> arity(action, args, 2, 5);
             case "remove", "close", "inventory" -> arity(action, args, 2);
             case "open" -> arity(action, args, 5);
-            case "block", "container" -> arity(action, args, 4);
+            case "block", "container" -> arity(action, args, 4, 5);
             case "use" -> arity(action, args, 5, 6);
             case "as" -> {
                 if (args.length < 3) throw usage(action);
@@ -164,9 +165,23 @@ public final class Plugin extends JavaPlugin {
         return sender instanceof Player p ? p.getWorld() : getServer().getWorlds().getFirst();
     }
 
+    private World dimension(String id) {
+        NamespacedKey key;
+        try {
+            key = NamespacedKey.fromString(id);
+        } catch (IllegalArgumentException e) {
+            // "minecraft:" and ":" get past the null checks and fail validation of the empty key.
+            throw new CommandError("not a dimension id: " + id);
+        }
+        if (key == null) throw new CommandError("not a dimension id: " + id);
+        World world = getServer().getWorld(key);
+        if (world == null) throw new CommandError("unknown dimension " + id);
+        return world;
+    }
+
     /** Answers for a block position, which needs no fake player. */
     private void query(String action, CommandSender sender, String[] args, JsonObject reply) {
-        World world = worldOf(sender);
+        World world = args.length == 5 ? dimension(args[4]) : worldOf(sender);
         int x = integer(args[1]), y = integer(args[2]), z = integer(args[3]);
         requireInside(new Location(world, x, y, z));
         var block = world.getBlockAt(x, y, z);

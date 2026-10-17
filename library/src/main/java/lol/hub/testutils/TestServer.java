@@ -237,17 +237,17 @@ public final class TestServer implements AutoCloseable {
         }
     }
 
-    /** The block at the position, loading its chunk if needed. */
+    /** The block at the position in its dimension, loading its chunk if needed. */
     public Block block(Pos pos) {
-        JsonObject reply = query("block " + pos);
+        JsonObject reply = query("block " + pos + " " + pos.dimension());
         Map<String, String> state = new HashMap<>();
         reply.getAsJsonObject("state").asMap().forEach((property, value) -> state.put(property, value.getAsString()));
         return new Block(reply.get("type").getAsString(), state);
     }
 
-    /** The slots of the container at the position. Throws when the block is no container. */
+    /** The slots of the container at the position in its dimension. Throws when the block is no container. */
     public Container container(Pos pos) {
-        JsonObject reply = query("container " + pos);
+        JsonObject reply = query("container " + pos + " " + pos.dimension());
         return new Container(reply.get("block").getAsString(), reply.get("size").getAsInt(), Item.slots(reply.getAsJsonArray("items")));
     }
 

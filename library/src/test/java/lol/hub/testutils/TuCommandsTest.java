@@ -105,16 +105,48 @@ class TuCommandsTest {
     }
 
     @Test
+    void blockAndContainerReadTheGivenDimension(TestServer server) {
+        String nether = "execute in minecraft:the_nether run ";
+        server.command(nether + "forceload add 1080 1000");
+        server.command(nether + "setblock 1080 64 1000 minecraft:oak_stairs[facing=east,half=top,shape=straight,waterlogged=false]");
+        server.command(nether + "setblock 1082 64 1000 chest{Items:[{Slot:4b,id:\"minecraft:dirt\",count:3}]}");
+        server.command("forceload add 1080 1000");
+        server.command("setblock 1080 64 1000 stone");
+        server.command("setblock 1082 64 1000 stone");
+
+        assertEquals(json("{\"ok\":true,\"pos\":[1080,64,1000],\"type\":\"minecraft:oak_stairs\","
+                        + "\"state\":{\"facing\":\"east\",\"half\":\"top\",\"shape\":\"straight\",\"waterlogged\":\"false\"}}"),
+                server.tu("block 1080 64 1000 minecraft:the_nether"));
+        assertEquals(json("{\"ok\":true,\"pos\":[1082,64,1000],\"block\":\"minecraft:chest\",\"size\":27,\"items\":["
+                        + "{\"slot\":4,\"id\":\"minecraft:dirt\",\"count\":3,\"damage\":0,\"item_model\":\"minecraft:dirt\"}]}"),
+                server.tu("container 1082 64 1000 minecraft:the_nether"));
+        JsonObject overworldStone = json("{\"ok\":true,\"pos\":[1080,64,1000],\"type\":\"minecraft:stone\",\"state\":{}}");
+        assertEquals(overworldStone, server.tu("block 1080 64 1000"));
+        assertEquals(overworldStone, server.tu("block 1080 64 1000 minecraft:overworld"));
+        assertError(server.tu("container 1082 64 1000"), "no container at 1082 64 1000");
+    }
+
+    @Test
+    void anUnknownOrMalformedDimensionAnswersWithAnError(TestServer server) {
+        assertError(server.tu("block 0 64 0 minecraft:nowhere"), "unknown dimension minecraft:nowhere");
+        assertError(server.tu("container 0 64 0 tu:nowhere"), "unknown dimension tu:nowhere");
+        assertError(server.tu("block 0 64 0 Not:Valid"), "not a dimension id: Not:Valid");
+        assertError(server.tu("container 0 64 0 a:b:c"), "not a dimension id: a:b:c");
+    }
+
+    @Test
     void badArgumentsAnswerWithAnErrorAndLogNothing(TestServer server) throws IOException {
         server.tu("spawn badargs 1040 64 1000");
         List<String> wrongShape = List.of("", "bogus badargs", "spawn", "spawn x 1", "spawn x 1 2", "spawn x 1 2 3 4", "spawn x a b c",
                 "remove", "close", "inventory", "inventory badargs extra", "as badargs", "open badargs", "open badargs a b c", "open badargs 1 2",
-                "use badargs 1 2", "use badargs a b c", "block", "block 1 2", "block a b c", "block 1 2 3 4", "container", "container 1 2 3 4");
+                "use badargs 1 2", "use badargs a b c", "block", "block 1 2", "block a b c", "block 1 2 3 4 5", "block a b c minecraft:the_nether", "container", "container 1 2 3 4 5");
         List<String> outsideTheWorld = List.of("spawn out1 NaN 64 0", "spawn out2 Infinity 64 0", "spawn out3 1e400 64 0",
                 "spawn out4 0 64 1e10", "spawn out5 4000 100000 4000", "spawn out6 4000 -100000 4000",
-                "open badargs 2000000000 64 0", "use badargs 0 100000 0", "block 2000000000 64 0", "block 0 100000 0", "container 0 -100000 0");
+                "open badargs 2000000000 64 0", "use badargs 0 100000 0", "block 2000000000 64 0", "block 0 100000 0", "container 0 -100000 0",
+                "block 0 300 0 minecraft:the_nether", "container 2000000000 64 0 minecraft:the_end");
         List<String> unknown = List.of("open nobody 1 2 3", "use nobody 1 2 3", "as nobody help", "close nobody", "remove nobody",
-                "use badargs 1040 64 1000 sideways");
+                "use badargs 1040 64 1000 sideways", "block 0 64 0 minecraft:nowhere", "block 0 64 0 Not:Valid", "container 0 64 0 :",
+                "container 0 64 0 minecraft:");
         for (String args : List.of(wrongShape, outsideTheWorld, unknown).stream().flatMap(List::stream).toList()) assertErrorShape(server, args);
 
         for (String name : List.of("x", "out1", "out2", "out3", "out4", "out5", "out6")) {
