@@ -99,7 +99,7 @@ class SpawnTest {
   as soon as a value breaks `holds`, with that value. It returns only after the window has
   passed, so a control case can show that something did not happen.
 
-- `server.area()` / an injected `Area` parameter: one area per test invocation (each parameterized case too).
+- `server.area()` / an injected `Area` parameter: one area per test invocation (each parameterized case too) and dimension.
   It is a force-loaded chunk with a stone floor, spaced far from every other area. `area.at(dx, dy, dz)`
   gives a `Pos`, where `dy` 0 is the floor and 1 the first air block; a `Pos` prints as `x y z` for commands.
   A `Pos` carries a dimension id; `new Pos(x, y, z)` is in the overworld, `new Pos(x, y, z, "minecraft:the_nether")` in the Nether.
@@ -113,6 +113,10 @@ class SpawnTest {
   above 32 air blocks, and no entity inside but players. Their terrain, lava and mobs stay out. Barriers let
   light through, so block light from lava or glowing blocks outside the walls reaches inside. Building it force-loads the 8 neighbouring chunks for the walls and releases them afterwards, so
   only the area's own chunk stays force-loaded. Areas in every other dimension are open, like the overworld's.
+- `@InDimension("minecraft:the_nether") Area area` injects an area in that dimension. Without the annotation the
+  area is in the overworld. A test invocation gets one area per dimension, so `@BeforeEach` and the test share an
+  area only when both ask for the same dimension. A test can ask for areas in several dimensions; all of them
+  close when it ends. A dimension the server doesn't have fails the parameter's resolution, naming it.
 - `Bot` has `hold(item)`, `run(command)`, `use(pos)`, `open(pos)`, `close()`, `inventory()`, `remove()`. A call the server
   refuses throws, so tests never check a reply. `run` returns the command's success instead.
   `inventory()` returns an `Inventory(Map<Integer, Item> slots, Item mainHand)` of `Item(id, count, damage, itemModel)`;

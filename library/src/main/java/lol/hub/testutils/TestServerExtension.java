@@ -9,17 +9,44 @@ import org.junit.jupiter.api.extension.ParameterResolver;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Parameter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Injects the run's single {@link TestServer}, which starts on first use and stops when the run ends,
- * and a fresh {@link Area} per test invocation, which removes its bots when the invocation ends.
+ * and a fresh {@link Area} per test invocation and dimension, which removes its bots when the invocation ends.
  * An error of the plugin under test in the server log fails the test that was running, or the class if it
  * came after the last test.
  */
 public final class TestServerExtension implements ParameterResolver, AfterEachCallback, AfterAllCallback {
 
     private static final ExtensionContext.Namespace NAMESPACE = ExtensionContext.Namespace.create(TestServerExtension.class);
+
+    /** One invocation's areas, one per dimension id. */
+    private static final class Areas implements AutoCloseable {
+        private final Map<String, Area> byDimension = new LinkedHashMap<>();
+
+        Area get(String dimension, TestServer server) {
+            return byDimension.computeIfAbsent(dimension, server::area);
+        }
+
+        @Override
+        public void close() {
+            // One area failing to close must not leave the other areas' bots online.
+            RuntimeException failure = null;
+            for (Area area : byDimension.values()) {
+                try {
+                    area.close();
+                } catch (RuntimeException e) {
+                    if (failure == null) failure = e;
+                    else failure.addSuppressed(e);
+                }
+            }
+            if (failure != null) throw failure;
+        }
+    }
 
     @Override
     public boolean supportsParameter(ParameterContext parameter, ExtensionContext context) {
@@ -35,16 +62,17 @@ public final class TestServerExtension implements ParameterResolver, AfterEachCa
         if (context.getTestMethod().isEmpty()) {
             throw new ParameterResolutionException("an Area belongs to one test, ask for it in a test or @BeforeEach method");
         }
-        // @BeforeEach and the test method share this invocation's context, so they share its area.
-        return context.getStore(NAMESPACE).computeIfAbsent(Area.class, key -> server.area(), Area.class);
+        String dimension = dimension(parameter.getParameter(), server);
+        // @BeforeEach and the test method share this invocation's context, so they share its area in each dimension.
+        return context.getStore(NAMESPACE).computeIfAbsent(Areas.class, key -> new Areas(), Areas.class).get(dimension, server);
     }
 
     @Override
     public void afterEach(ExtensionContext context) {
         // Closed here, not by the store later, so errors from the bots leaving are blamed on this test.
-        Area area = context.getStore(NAMESPACE).remove(Area.class, Area.class);
+        Areas areas = context.getStore(NAMESPACE).remove(Areas.class, Areas.class);
         try {
-            if (area != null) area.close();
+            if (areas != null) areas.close();
         } finally {
             failOnPluginErrors(context);
         }
@@ -53,6 +81,16 @@ public final class TestServerExtension implements ParameterResolver, AfterEachCa
     @Override
     public void afterAll(ExtensionContext context) {
         failOnPluginErrors(context);
+    }
+
+    /** The dimension an {@link Area} parameter asks for with {@link InDimension}, the overworld without one. */
+    static String dimension(Parameter parameter, TestServer server) {
+        InDimension in = parameter.getAnnotation(InDimension.class);
+        if (in == null) return Pos.OVERWORLD;
+        if (!server.dimensions().contains(in.value())) {
+            throw new ParameterResolutionException("the server has no dimension " + in.value() + ", it has " + server.dimensions());
+        }
+        return in.value();
     }
 
     private static void failOnPluginErrors(ExtensionContext context) {

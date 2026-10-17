@@ -76,10 +76,12 @@ public final class TestServer implements AutoCloseable {
     private final Duration bootTime;
     private final boolean coldRepo;
     private final ServerRegistry.Registration registration;
+    private final List<String> dimensions;
 
     private TestServer(Path dir, Path logCopy, int rconPort, Process process, Rcon rcon, LogWatcher watcher, Duration boot, boolean coldRepo,
-                       ServerRegistry.Registration registration) {
+                       ServerRegistry.Registration registration, List<String> dimensions) {
         this.registration = registration;
+        this.dimensions = dimensions;
         this.bootTime = boot;
         this.coldRepo = coldRepo;
         this.dir = dir;
@@ -187,7 +189,8 @@ public final class TestServer implements AutoCloseable {
                     throw new IllegalStateException("RCON command failed: say " + marker, e);
                 }
             }, MARKER_TIMEOUT);
-            return new TestServer(dir, launch.logCopy(), rconPort, process, rcon, watcher, Duration.ofNanos(System.nanoTime() - begin), cold, registration);
+            return new TestServer(dir, launch.logCopy(), rconPort, process, rcon, watcher, Duration.ofNanos(System.nanoTime() - begin), cold, registration,
+                    launch.dimensions());
         } catch (PortInUse e) {
             process.destroyForcibly();
             registration.close();
@@ -278,6 +281,11 @@ public final class TestServer implements AutoCloseable {
     /** A fresh {@link Area} in the dimension with that id, like {@code minecraft:the_nether}. Close it to remove its bots. */
     public Area area(String dimension) {
         return new Area(this, nextAreaIndex.getAndIncrement(), dimension);
+    }
+
+    /** The ids of the dimensions this server's launch set up. */
+    List<String> dimensions() {
+        return dimensions;
     }
 
     int nextBotNumber() {
