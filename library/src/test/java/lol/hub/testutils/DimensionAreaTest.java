@@ -1,10 +1,12 @@
 package lol.hub.testutils;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Duration;
+import java.util.Map;
 
 import static lol.hub.testutils.Waiting.holdsFor;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -46,5 +48,34 @@ class DimensionAreaTest {
                 }
             }
         }
+    }
+
+    @Test
+    void anAreaInADeclaredDimensionIsOpenAndFlatLikeAnOverworldArea(TestServer server, @InDimension("tu:dim") Area area) {
+        Pos origin = area.at(0, 0, 0);
+        assertEquals("tu:dim", origin.dimension());
+        assertEquals("No blocks were filled", area.command("fill " + origin + " " + area.at(15, 0, 15) + " stone"));
+        // Open: air goes on past where a sealed area has its ceiling, and its wall columns are the flat world's grass and air.
+        // The fill stays in the area's chunk, the only one force-loaded; the block queries load the neighbour chunks.
+        assertEquals("No blocks were filled", area.command("fill " + area.at(0, 1, 0) + " " + area.at(15, 40, 15) + " air"));
+        assertEquals("minecraft:grass_block", server.block(area.at(-1, 0, 8)).type());
+        assertEquals("minecraft:air", server.block(area.at(-1, 16, 8)).type());
+        assertEquals("minecraft:air", server.block(area.at(16, 16, 8)).type());
+
+        // The same coordinates in the overworld are untouched flat world, so these answers come from tu:dim.
+        Pos overworld = new Pos(origin.x(), origin.y(), origin.z());
+        assertEquals("minecraft:stone", server.block(origin).type());
+        assertEquals("minecraft:grass_block", server.block(overworld).type());
+        Pos chest = area.at(4, 1, 4);
+        String placed = area.command("setblock " + chest + " chest");
+        assertTrue(placed.startsWith("Changed the block"), placed);
+        assertEquals(new Container("minecraft:chest", 27, Map.of()), server.container(chest));
+        assertEquals("minecraft:air", server.block(new Pos(chest.x(), chest.y(), chest.z())).type());
+
+        Bot bot = area.bot();
+        Pos stand = area.at(8, 1, 8);
+        String atStand = "if entity @a[name=" + bot.name() + ",x=" + stand.x() + ",y=" + stand.y() + ",z=" + stand.z() + ",distance=..2]";
+        assertEquals(new CheckResult(true, 1), area.check(atStand));
+        assertEquals(new CheckResult(false, 0), server.check(atStand));
     }
 }
