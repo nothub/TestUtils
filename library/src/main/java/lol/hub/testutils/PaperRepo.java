@@ -3,6 +3,7 @@ package lol.hub.testutils;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -10,6 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * Paperclip's output (cache/, libraries/, versions/), kept in one directory that every run shares
@@ -27,6 +30,22 @@ final class PaperRepo {
     /** The JVM option that makes Paperclip read and write the repo instead of the working directory. */
     static String jvmArg(Path repo) {
         return "-DbundlerRepoDir=" + repo;
+    }
+
+    /**
+     * The patched server jar that {@link #patch} put into the repo for this Paperclip jar. One repo holds the patched jars
+     * of every MC version that used it, so the Paperclip jar's own version list picks the one.
+     */
+    static Path patchedJar(Path paperJar, Path repo) throws IOException {
+        try (ZipFile zip = new ZipFile(paperJar.toFile())) {
+            ZipEntry entry = zip.getEntry("META-INF/versions.list");
+            if (entry == null) throw new IllegalStateException(paperJar + " has no META-INF/versions.list");
+            List<String> lines = new String(zip.getInputStream(entry).readAllBytes(), StandardCharsets.UTF_8).lines().toList();
+            // Each line is "<sha256>\t<id>\t<path below versions/>".
+            if (lines.size() != 1) throw new IllegalStateException(paperJar + " lists " + lines.size() + " versions, expected one");
+            String[] fields = lines.getFirst().split("\t");
+            return repo.resolve("versions").resolve(fields[2]);
+        }
     }
 
     /**

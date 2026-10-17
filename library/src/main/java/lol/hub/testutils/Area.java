@@ -14,14 +14,12 @@ import java.util.function.BiConsumer;
 public final class Area implements AutoCloseable {
 
     private static final int SIZE = 16;
-    /** Block y of the floor. The flat world's grass is at the same height and gets replaced. */
-    private static final int FLOOR_Y = 63;
     // Both are multiples of 16, so every origin is chunk-aligned and the area is exactly one chunk.
     private static final int SPACING = 128;
     private static final int BASE = 10_000;
     private static final Set<String> SEALED = Set.of("minecraft:the_nether", "minecraft:the_end");
-    /** Air blocks between the floor and the ceiling of a sealed area. */
-    private static final int HEIGHT = 32;
+    /** Air blocks above the floor, which a sealed area closes with its ceiling. */
+    static final int HEIGHT = 32;
 
     private final TestServer server;
     private final String dimension;
@@ -74,7 +72,7 @@ public final class Area implements AutoCloseable {
 
     /** A block of this area. The floor is {@code dy} 0 and the first air block above it is 1. */
     public Pos at(int dx, int dy, int dz) {
-        return new Pos(x0 + dx, FLOOR_Y + dy, z0 + dz, dimension);
+        return new Pos(x0 + dx, TestServer.SURFACE_Y + dy, z0 + dz, dimension);
     }
 
     /** Runs a console command in this area's dimension and returns everything it wrote back. */

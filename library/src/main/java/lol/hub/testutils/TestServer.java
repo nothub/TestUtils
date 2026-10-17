@@ -1,5 +1,6 @@
 package lol.hub.testutils;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
@@ -35,10 +36,9 @@ public final class TestServer implements AutoCloseable {
     // Relative to the test JVM's working directory, which Gradle sets to the project directory.
     static final Path LOG_COPY = Path.of("build", "testutils", "server.log");
 
-    // Nothing here is random: no fluids, no features, no structures, so every test sees the same ground (top block y=63).
-    private static final String FLAT_WORLD = "{\"layers\":[{\"block\":\"minecraft:bedrock\",\"height\":1},"
-            + "{\"block\":\"minecraft:dirt\",\"height\":126},{\"block\":\"minecraft:grass_block\",\"height\":1}],"
-            + "\"biome\":\"minecraft:plains\",\"features\":false,\"lakes\":false,\"structure_overrides\":[]}";
+    /** Block y of the grass on top of every flat dimension, and of an area's floor, which replaces it. */
+    static final int SURFACE_Y = 63;
+    private static final int OVERWORLD_MIN_Y = -64;
 
     /** A command that fixes part of the world, the query that reads it back, and what the query must answer. */
     private record WorldSetting(String set, String query, String expected) {
@@ -155,7 +155,7 @@ public final class TestServer implements AutoCloseable {
                 "rcon.port=" + rconPort,
                 "rcon.password=" + rconPassword,
                 "level-type=minecraft:flat",
-                "generator-settings=" + FLAT_WORLD,
+                "generator-settings=" + flatWorld(OVERWORLD_MIN_Y),
                 ""));
 
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
@@ -201,6 +201,32 @@ public final class TestServer implements AutoCloseable {
             registration.close();
             throw e;
         }
+    }
+
+    /**
+     * Flat generator settings whose grass lands on {@link #SURFACE_Y} in a dimension starting at {@code minY}, which lies below it.
+     * Nothing here is random: no fluids, no features, no structures, so every test sees the same ground.
+     */
+    static JsonObject flatWorld(int minY) {
+        JsonArray layers = new JsonArray();
+        layers.add(layer("minecraft:bedrock", 1));
+        int dirt = SURFACE_Y - minY - 1;
+        if (dirt > 0) layers.add(layer("minecraft:dirt", dirt));
+        layers.add(layer("minecraft:grass_block", 1));
+        JsonObject settings = new JsonObject();
+        settings.add("layers", layers);
+        settings.addProperty("biome", "minecraft:plains");
+        settings.addProperty("features", false);
+        settings.addProperty("lakes", false);
+        settings.add("structure_overrides", new JsonArray());
+        return settings;
+    }
+
+    private static JsonObject layer(String block, int height) {
+        JsonObject layer = new JsonObject();
+        layer.addProperty("block", block);
+        layer.addProperty("height", height);
+        return layer;
     }
 
     /** Runs a console command and returns everything it wrote back. */
