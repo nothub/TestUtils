@@ -161,19 +161,35 @@ class TuCommandsTest {
     }
 
     @Test
+    void dimensionReply(TestServer server) {
+        assertEquals(json("{\"ok\":true,\"dimension\":\"minecraft:the_end\",\"monster_spawn_block_light_limit\":0,\"has_ender_dragon_fight\":true}"),
+                server.tu("dimension minecraft:the_end"));
+        assertError(server.tu("dimension minecraft:nowhere"), "unknown dimension minecraft:nowhere");
+        assertError(server.tu("dimension Not:Valid"), "not a dimension id: Not:Valid");
+    }
+
+    @Test
+    void dimensionTypeValuesOfTheVanillaDimensions(TestServer server) {
+        assertEquals(new DimensionType("minecraft:overworld", 0, false), server.dimension("minecraft:overworld"));
+        assertEquals(new DimensionType("minecraft:the_nether", 15, false), server.dimension("minecraft:the_nether"));
+        assertEquals(new DimensionType("minecraft:the_end", 0, true), server.dimension("minecraft:the_end"));
+    }
+
+    @Test
     void badArgumentsAnswerWithAnErrorAndLogNothing(TestServer server) throws IOException {
         server.tu("spawn badargs 1040 64 1000");
         List<String> wrongShape = List.of("", "bogus badargs", "spawn", "spawn x 1", "spawn x 1 2", "spawn x a b c", "spawn x minecraft:the_nether",
                 "spawn x 1 2 3 minecraft:the_nether extra", "spawn x a b c minecraft:the_nether",
                 "remove", "close", "inventory", "inventory badargs extra", "as badargs", "open badargs", "open badargs a b c", "open badargs 1 2",
-                "use badargs 1 2", "use badargs a b c", "block", "block 1 2", "block a b c", "block 1 2 3 4 5", "block a b c minecraft:the_nether", "container", "container 1 2 3 4 5");
+                "use badargs 1 2", "use badargs a b c", "block", "block 1 2", "block a b c", "block 1 2 3 4 5", "block a b c minecraft:the_nether", "container", "container 1 2 3 4 5",
+                "dimension", "dimension minecraft:overworld extra");
         List<String> outsideTheWorld = List.of("spawn out1 NaN 64 0", "spawn out2 Infinity 64 0", "spawn out3 1e400 64 0",
                 "spawn out4 0 64 1e10", "spawn out5 4000 100000 4000", "spawn out6 4000 -100000 4000",
                 "open badargs 2000000000 64 0", "use badargs 0 100000 0", "block 2000000000 64 0", "block 0 100000 0", "container 0 -100000 0",
                 "block 0 300 0 minecraft:the_nether", "container 2000000000 64 0 minecraft:the_end", "spawn out7 0 300 0 minecraft:the_nether");
         List<String> unknown = List.of("open nobody 1 2 3", "use nobody 1 2 3", "as nobody help", "close nobody", "remove nobody",
                 "use badargs 1040 64 1000 sideways", "spawn x 1 2 3 4", "spawn x 1 2 3 minecraft:nowhere", "spawn x 1 2 3 Not:Valid", "block 0 64 0 minecraft:nowhere", "block 0 64 0 Not:Valid", "container 0 64 0 :",
-                "container 0 64 0 minecraft:");
+                "container 0 64 0 minecraft:", "dimension minecraft:nowhere", "dimension Not:Valid", "dimension :");
         for (String args : List.of(wrongShape, outsideTheWorld, unknown).stream().flatMap(List::stream).toList()) assertErrorShape(server, args);
 
         for (String name : List.of("x", "out1", "out2", "out3", "out4", "out5", "out6", "out7")) {

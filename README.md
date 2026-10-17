@@ -29,11 +29,12 @@ Alias `/tu`, permission `testutils.use` (op).
 | `/tu inventory <name>`                  | Report what it carries: every non-empty slot and the main-hand item.                               |
 | `/tu block <x> <y> <z> [dimension]`     | Report the block's type and state properties. Needs no fake player.                                |
 | `/tu container <x> <y> <z> [dimension]` | Report the slots of the container block there. Needs no fake player.                               |
+| `/tu dimension <id>`                    | Report its monster spawn block light limit and whether it has a dragon fight.                      |
 
 Vanilla commands cover the rest, since the fake player is a real player:
 `tp`, `give`, `clear`, `item replace entity <name> weapon.mainhand with ...`,
-`data get entity <name> Inventory`. The `inventory`, `block` and `container` queries answer in JSON, so a test
-never has to parse the text those commands print.
+`data get entity <name> Inventory`. The `inventory`, `block`, `container` and `dimension` queries answer in JSON,
+so a test never has to parse the text those commands print.
 
 `spawn`, `block` and `container` act in the overworld unless a dimension id follows the coordinates, such as
 `minecraft:the_nether`. Without a dimension id, a command run by a player acts in that player's world.
@@ -58,6 +59,7 @@ None of these log an error. An error reply holds exactly `ok` and `error`.
 | `inventory` | `{"ok":true,"name":"bot","main_hand":{"id":"minecraft:iron_hoe","count":1,"damage":7,"item_model":"minecraft:iron_hoe"},"items":[{"slot":0,"id":"minecraft:iron_hoe","count":1,"damage":7,"item_model":"minecraft:iron_hoe"}]}`, `main_hand` is `null` for an empty hand, empty slots are left out, `damage` is 0 for an item that can't be damaged. Slots are numbered like Bukkit's `PlayerInventory`: 0-8 hotbar, 9-35 bag, 36-39 boots to helmet, 40 off hand. |
 | `block`     | `{"ok":true,"pos":[0,64,0],"type":"minecraft:oak_stairs","state":{"facing":"east","half":"top","shape":"straight","waterlogged":"false"}}`, property values are vanilla's names as strings, `state` is `{}` for a block without properties                                                                                                                                                                                                                         |
 | `container` | `{"ok":true,"pos":[0,64,0],"block":"minecraft:chest","size":27,"items":[{"slot":4,"id":"minecraft:dirt","count":3,"damage":0,"item_model":"minecraft:dirt"}]}`, `items` holds the non-empty slots like `inventory` does, a block that is no container answers `no container at x y z`.                                                                                                                                                                             |
+| `dimension` | `{"ok":true,"dimension":"minecraft:the_nether","monster_spawn_block_light_limit":15,"has_ender_dragon_fight":false}`, values of the dimension type the world runs on                                                                                                                                                                                                                                                                                               |
 
 A fake player is not op. `as` runs commands under the permissions it has.
 
@@ -87,6 +89,8 @@ class SpawnTest {
 - `block(pos)` returns a `Block(type, state)` and `container(pos)` a `Container(block, size, slots)`, both typed
   from the JSON replies. Both read the position's dimension. `container` throws for a block that is no container. Neither
   loads anything from text.
+- `dimension(id)` returns a `DimensionType(id, monsterSpawnBlockLightLimit, hasEnderDragonFight)` from the `dimension`
+  reply. It throws for an unknown dimension.
 - `command(line)` runs any console command and returns everything it wrote back.
 - `Waiting.waitUntil(timeout, query, holds)` re-runs the query (any `Supplier`, such as
   `() -> server.check("if ...")`) about every 50 ms until `holds` accepts its value, and returns that value.

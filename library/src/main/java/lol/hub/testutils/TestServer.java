@@ -251,6 +251,13 @@ public final class TestServer implements AutoCloseable {
         return new Container(reply.get("block").getAsString(), reply.get("size").getAsInt(), Item.slots(reply.getAsJsonArray("items")));
     }
 
+    /** The type values of the dimension with that id, like {@code minecraft:the_nether}. Throws for an unknown dimension. */
+    public DimensionType dimension(String id) {
+        JsonObject reply = query("dimension " + id);
+        return new DimensionType(reply.get("dimension").getAsString(), reply.get("monster_spawn_block_light_limit").getAsInt(),
+                reply.get("has_ender_dragon_fight").getAsBoolean());
+    }
+
     private JsonObject query(String args) {
         JsonObject reply = tu(args);
         if (!reply.get("ok").getAsBoolean()) throw new IllegalStateException("tu " + args + " failed: " + reply.get("error").getAsString());

@@ -16,6 +16,7 @@ import org.bukkit.World;
 import org.bukkit.block.Container;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.craftbukkit.CraftWorld;
 import org.bukkit.craftbukkit.block.data.CraftBlockData;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
@@ -42,6 +43,7 @@ public final class Plugin extends JavaPlugin {
         USAGE.put("inventory", "inventory <name>");
         USAGE.put("block", "block <x> <y> <z> [dimension]");
         USAGE.put("container", "container <x> <y> <z> [dimension]");
+        USAGE.put("dimension", "dimension <id>");
     }
 
     /** A reply the caller can fix: it goes out as {"ok":false,"error":...}, not as an exception. */
@@ -82,7 +84,7 @@ public final class Plugin extends JavaPlugin {
         }
         switch (action) {
             case "spawn" -> arity(action, args, 2, 5, 6);
-            case "remove", "close", "inventory" -> arity(action, args, 2);
+            case "remove", "close", "inventory", "dimension" -> arity(action, args, 2);
             case "open" -> arity(action, args, 5);
             case "block", "container" -> arity(action, args, 4, 5);
             case "use" -> arity(action, args, 5, 6);
@@ -93,6 +95,14 @@ public final class Plugin extends JavaPlugin {
         }
         if (action.equals("block") || action.equals("container")) {
             query(action, sender, args, reply);
+            return;
+        }
+        if (action.equals("dimension")) {
+            World world = dimension(args[1]);
+            var type = ((CraftWorld) world).getHandle().dimensionType();
+            reply.addProperty("dimension", world.getKey().toString());
+            reply.addProperty("monster_spawn_block_light_limit", type.monsterSpawnBlockLightLimit());
+            reply.addProperty("has_ender_dragon_fight", type.hasEnderDragonFight());
             return;
         }
         String name = args[1];
