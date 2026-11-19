@@ -2,7 +2,7 @@
 
 Paper plugin. Fake players for headless plugin tests.
 
-[GitHub](https://github.com/nothub/testutils/releases)
+[![GitHub](https://img.shields.io/github/stars/nothub/testutils)](https://github.com/nothub/testutils)
 
 ---
 
