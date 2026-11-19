@@ -2,6 +2,10 @@
 
 Paper plugin. Fake players for headless plugin tests.
 
+[GitHub](https://github.com/nothub/testutils/releases)
+
+---
+
 Write JUnit 6 tests with the [test library](#test-library) and run them with `./gradlew test`.
 The library boots a headless Paper server with the plugin under test and TestUtils installed,
 drives it over RCON through fake players, and stops it after the last test.
@@ -12,9 +16,7 @@ path with an in-memory connection. Other plugins see it in
 No Minecraft client or account needed, so the whole test runs from the
 server console.
 
----
-
-### Commands
+## Commands
 
 Alias `/tu`, permission `testutils.use` (op).
 
@@ -40,7 +42,7 @@ so a test never has to parse the text those commands print.
 `minecraft:the_nether`. Without a dimension id, a command run by a player acts in that player's world.
 `spawn <name> <dimension>` without coordinates is a usage error.
 
-### Replies
+## Replies
 
 Every `tu` command answers with one line of JSON. Success carries `"ok": true`
 plus the fields below. Anything the caller can fix answers `{"ok":false,"error":"..."}`:
@@ -63,7 +65,7 @@ None of these log an error. An error reply holds exactly `ok` and `error`.
 
 A fake player is not op. `as` runs commands under the permissions it has.
 
-### Test library
+## Test library
 
 `TestServerExtension` starts one Paper server per test run and injects it as a `TestServer`:
 
@@ -148,7 +150,7 @@ take it.
 
 The library compiles against JUnit and Gson without shipping them: declare both in the consuming build.
 
-#### Declared dimensions
+### Declared dimensions
 
 A test run gets extra dimensions from `testutils-dimensions.json` at the root of the test classpath
 (`src/test/resources`). It is an array of entries:
@@ -178,7 +180,7 @@ an unknown base, or a `min_y` and `height` that can't hold the grass and 32 bloc
 An override value the server rejects, such as a light limit of 99, stops the server within seconds. The run
 fails with the server's `Errors in element <id>` line and the end of its log.
 
-### Consumer setup
+## Consumer setup
 
 Every `v*` release carries three assets under one version:
 
@@ -252,7 +254,7 @@ The library reads the four system properties and downloads nothing itself. The l
 
 Keep downloaded jars out of `build/dist`: a release glob over it would upload them.
 
-### Example
+## Example
 
 ```
 tu spawn bot 0 64 0
@@ -263,7 +265,7 @@ data get block 0 64 2 Items
 tu remove bot
 ```
 
-### Build
+## Build
 
 Two subprojects, two jars:
 
@@ -298,7 +300,7 @@ pins one Paper build (`paper_build`, `paper_sha256` in `gradle.properties`),
 downloads and verifies it once into `<gradle user home>/caches/testutils/paper`,
 boots it in a temp directory with the plugin jar, and talks to it over RCON.
 
-### No orphan servers
+## No orphan servers
 
 When the test JVM is interrupted or terminated (Ctrl-C of Gradle), a shutdown hook sends the server SIGTERM
 and kills it after 10 s. A `kill -9` runs no hooks, so every server also gets a run marker
@@ -306,7 +308,7 @@ and kills it after 10 s. A `kill -9` runs no hooks, so every server also gets a 
 with the server's and its owner's pid and start time. Before booting, a run stops every marked server whose owner
 is gone. A process without our marker, such as `runServer`, is never touched, even when a record names its pid.
 
-### Paper cache and offline runs
+## Paper cache and offline runs
 
 Gradle downloads the pinned Paper jar once into `<gradle user home>/caches/testutils/paper`. Paper's
 launcher (Paperclip) then fetches Mojang's server jar and its libraries and patches them. The library
@@ -322,7 +324,7 @@ network and skips itself without DNS.
 In CI, cache `~/.gradle/caches/testutils/paper` keyed on `<minecraft_version>-<paper_build>`. See `.github/workflows/ci.yaml`,
 which also fails the build when boot plus teardown exceeds 30 s on a cache hit.
 
-### Limits
+## Limits
 
 - Nothing ticks the fake player's connection, so it has no movement or
   physics. It stands where it was placed until `tp` moves it. The world still
